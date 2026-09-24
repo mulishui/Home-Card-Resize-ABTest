@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>设备卡片尺寸 A/B 调研</title>
+<style>
+/* ========== 全局 ========== */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+  background:#eceef2;color:#1c1d21;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  padding:24px 16px 60px;
+}
+body.dragging{user-select:none;cursor:grabbing}
+
+/* ========== 顶部调研控制条 ========== */
+.topbar{
+  width:100%;max-width:880px;margin-bottom:20px;
+  display:flex;flex-direction:column;gap:14px;align-items:center;
+}
+.topbar h1{font-size:17px;font-weight:600;letter-spacing:.3px}
+.topbar .sub{font-size:13px;color:#83868f;text-align:center;line-height:1.6}
+.seg{display:inline-flex;background:#dfe2e8;border-radius:11px;padding:3px;gap:3px}
+.seg button{
+  border:0;background:transparent;font:inherit;font-size:13px;font-weight:500;
+  color:#5d606a;padding:7px 18px;border-radius:9px;cursor:pointer;
+  transition:background .18s,color .18s,box-shadow .18s;white-space:nowrap;
+}
+.seg button.on{background:#fff;color:#1c1d21;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
+/* ========== 手机外框 ========== */
+.stage{display:flex;gap:28px;justify-content:center;flex-wrap:wrap}
+.phone-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+.phone-tag{
+  font-size:12px;font-weight:600;color:#6b6e78;letter-spacing:.5px;
+  background:#fff;border-radius:20px;padding:5px 14px;box-shadow:0 1px 3px rgba(0,0,0,.08)
+}
+.phone{
+  width:340px;height:700px;background:#f5f6f8;border-radius:38px;
+  box-shadow:0 18px 44px rgba(20,22,30,.16),0 0 0 9px #1c1d21,0 0 0 10px #35373f;
+  overflow:hidden;position:relative;display:flex;flex-direction:column;
+}
+.notch{
+  position:absolute;top:8px;left:50%;transform:translateX(-50%);
+  width:104px;height:26px;background:#1c1d21;border-radius:14px;
+}
+.statusbar{
+  height:44px;flex:0 0 44px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;font-size:13px;font-weight:600;position:relative;z-index:3;
+}
+.statusbar .icons{display:flex;gap:5px;align-items:center;font-size:11px}
+
+/* ========== 编辑态导航栏 ========== */
+.navbar{
+  flex:0 0 48px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 18px;font-size:15px;
+}
+.navbar .act{color:#8a8d96}
+.navbar .act.done{color:#1c1d21;font-weight:600}
+.navbar .title{font-size:16px;font-weight:600}
+.edit-tip{
+  font-size:11.5px;color:#9b9ea6;text-align:center;padding:0 18px 14px;line-height:1.5;
+}
+
+/* 页面滚动区 */
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-top:4px}
+.screen::-webkit-scrollbar{display:none}
+
+/* ========== 设备卡片网格（A/B 差异核心） ========== */
+.grid{
+  display:grid;padding:0 var(--edge) 40px;
+  grid-template-columns:repeat(var(--cols),1fr);
+  gap:var(--gap);
+}
+.card{
+  background:#fff;border-radius:var(--radius);padding:var(--pad);
+  min-height:var(--card-h);display:flex;flex-direction:column;
+  box-shadow:0 1px 3px rgba(20,22,30,.06);
+  position:relative;touch-action:manipulation;cursor:grab;
+}
+.card .row1{display:flex;align-items:flex-start;justify-content:space-between}
+.card .ico{
+  width:var(--ico);height:var(--ico);flex:0 0 auto;color:#c2c5cc;
+}
+.card .ico svg{width:100%;height:100%;display:block}
+.card .name{
+  font-size:var(--fs-name);font-weight:600;letter-spacing:.2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.card .sub{
+  font-size:var(--fs-sub);color:#a8abb3;margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.card .txt{margin-top:var(--txt-mt)}
+
+/* 右上角：调整尺寸入口 */
+.resize{
+  width:var(--btn);height:var(--btn);border-radius:50%;border:0;flex:0 0 auto;
+  background:#8e9198;color:#fff;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;padding:0;transition:transform .15s,background .15s;
+}
+.resize:active{transform:scale(.9);background:#75787f}
+.resize svg{width:54%;height:54%;display:block}
+
+/* 拖拽态 */
+.card.placeholder{
+  opacity:.28;box-shadow:none;background:#dfe2e8;
+}
+.card.placeholder *{visibility:hidden}
+/* 浮层现在挂在 .phone 内部（而不是 body 下），position:absolute 配合 .phone 自带的
+   overflow:hidden，拖出手机边框时会被物理裁切掉，而不是把浮层的位置钳制在边框内 */
+.ghost{
+  position:absolute;left:0;top:0;z-index:9999;pointer-events:none;margin:0;
+  box-shadow:0 14px 32px rgba(20,22,30,.22);border-radius:var(--radius);
+  transform-origin:center;transition:none;
+}
+/* 孤立（未配对）的 1×0.5 卡片下方留白的半格槽位：不可见，但要能接住拖拽悬停/落点判定，
+   否则拖到那片空白上会因为没有任何 DOM 元素而判定失败 */
+.plan-A .card[data-size="1x0.5"] > .blank-hit{
+  position:absolute;left:0;right:0;top:calc(100% + var(--gap));height:var(--unit);
+}
+
+/* ---- 方案 A：大卡片（2 列） ---- */
+.plan-A{
+  --cols:2; --gap:12px; --edge:16px; --card-h:116px; --pad:14px; --radius:20px;
+  --ico:34px; --btn:22px; --fs-name:14.5px; --fs-sub:12px; --txt-mt:16px;
+  --unit:calc((var(--card-h) + var(--gap)) / 2);
+  /* 卡片尺寸占位：半格网格，只在方案 A 生效。每张卡片的 grid-column/grid-row
+     由 JS 里的 relayout() 显式计算并写成行内样式（见 computeLayout()），
+     不依赖浏览器自动排布——因为需要实现“孤立 1×0.5 卡片独占一整个 1×1 高度的
+     槽位，只有紧跟着的下一张也是 1×0.5 才共享同一槽位；改尺寸时前面的卡片
+     位置不变、后面的卡片顺势重排、且不回填跳过的空位”这套规则，纯 CSS 的
+     auto-flow（不管 dense 还是稀疏）都无法精确表达。 */
+  grid-auto-rows:var(--unit);
+  row-gap:0;column-gap:var(--gap);
+}
+.plan-A .card{min-height:0;margin-bottom:var(--gap)}
+.plan-A .card[data-size="1x0.5"]{
+  flex-direction:row;align-items:center;justify-content:space-between;padding:0 var(--pad);
+}
+.plan-A .card[data-size="1x0.5"] .ico{display:none}
+.plan-A .card[data-size="1x0.5"] .sub{display:none}
+.plan-A .card[data-size="1x0.5"] .row1{flex:0 0 auto}
+.plan-A .card[data-size="1x0.5"] .txt{margin-top:0;order:-1;flex:1 1 auto;min-width:0}
+/* ---- 方案 B：小卡片（3 列） ---- */
+.plan-B{
+  --cols:3; --gap:9px; --edge:14px; --card-h:94px; --pad:10px; --radius:16px;
+  --ico:26px; --btn:22px; --fs-name:12.5px; --fs-sub:10.5px; --txt-mt:11px;
+}
+
+/* ========== toast ========== */
+.toast{
+  position:fixed;left:50%;bottom:44px;transform:translate(-50%,16px);
+  background:rgba(28,29,33,.92);color:#fff;font-size:13px;
+  padding:11px 20px;border-radius:22px;z-index:99999;
+  opacity:0;transition:opacity .22s,transform .22s;pointer-events:none;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ========== 就近提示气泡（点了不支持切换的尺寸按钮时） ========== */
+.hint{
+  position:fixed;z-index:99999;pointer-events:none;max-width:220px;
+  background:rgba(28,29,33,.92);color:#fff;font-size:13px;line-height:1.4;
+  padding:11px 16px;border-radius:14px;
+  opacity:0;transform:translateY(4px);transition:opacity .18s,transform .18s;
+}
+.hint.show{opacity:1;transform:translateY(0)}
+.hint::after{
+  content:"";position:absolute;left:var(--arrow-left,50%);bottom:-6px;
+  width:12px;height:12px;background:inherit;
+  clip-path:polygon(0 0,100% 0,50% 100%);
+}
+
+/* ========== 调研问卷区（占位，等你的题目） ========== */
+.survey{
+  width:100%;max-width:560px;margin-top:28px;background:#fff;border-radius:18px;
+  padding:22px;box-shadow:0 2px 12px rgba(20,22,30,.07);
+}
+.survey h2{font-size:15px;font-weight:600;margin-bottom:4px}
+.survey .tip{font-size:12px;color:#9b9ea6;margin-bottom:16px}
+.choices{display:flex;flex-direction:column;gap:10px}
+.choice{
+  border:1.5px solid #e6e8ec;border-radius:12px;padding:13px 15px;font-size:14px;
+  cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:10px;
+}
+.choice:hover{border-color:#cdd1d8}
+.choice.sel{border-color:#1c1d21;background:#f4f5f7}
+.choice .dot{
+  width:17px;height:17px;border-radius:50%;border:1.5px solid #cdd1d8;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;
+}
+.choice.sel .dot{border-color:#1c1d21}
+.choice.sel .dot::after{content:"";width:9px;height:9px;border-radius:50%;background:#1c1d21}
+.submit{
+  width:100%;margin-top:16px;border:0;border-radius:12px;background:#1c1d21;color:#fff;
+  font:inherit;font-size:14px;font-weight:600;padding:13px;cursor:pointer;
+}
+.submit:disabled{background:#d8dade;cursor:not-allowed}
+.done{text-align:center;font-size:14px;color:#3aa76d;padding:10px 0}
+
+/* ========== 移动端 ========== */
+@media (max-width:760px){
+  body{padding:12px 0 40px;background:#f5f6f8}
+  .topbar{padding:0 16px}
+  .phone{width:100vw;height:auto;min-height:calc(100vh - 150px);border-radius:0;box-shadow:none}
+  .phone .notch{display:none}
+  .stage{gap:16px;width:100%}
+  .survey{margin:24px 16px 0;width:calc(100% - 32px)}
+  .cmp-only{display:none!important}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>设备卡片尺寸方案调研</h1>
+  <p class="sub">页面处于「编辑态」：可长按拖动卡片排序，点右上角按钮调整尺寸</p>
+  <div class="seg" id="viewSeg">
+    <button data-view="A" class="on">方案 A · 大卡片</button>
+    <button data-view="B">方案 B · 小卡片</button>
+    <button data-view="C" class="cmp-only">并排对比</button>
+  </div>
+</div>
+
+<div class="stage" id="stage"></div>
+
+<div class="survey">
+  <h2>你更倾向哪个方案？</h2>
+  <p class="tip">（占位问卷，等你提供正式题目后替换）</p>
+  <div class="choices" id="choices">
+    <div class="choice" data-v="A"><i class="dot"></i>方案 A · 大卡片，信息更清楚</div>
+    <div class="choice" data-v="B"><i class="dot"></i>方案 B · 小卡片，一屏看得更多</div>
+    <div class="choice" data-v="X"><i class="dot"></i>都可以 / 没有明显偏好</div>
+  </div>
+  <button class="submit" id="submit" disabled>提交</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   素材区：把 icon 换成你的真实图标即可（svg 字符串或 <img src="...">）
+   name = 设备名，sub = 房间名
+   ============================================================ */
+const S = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+
+const ICONS = {
+  bulb:   S('<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.5.4.8 1 .8 1.6v.5h5.4v-.5c0-.6.3-1.2.8-1.6A6 6 0 0 0 12 3z"/>'),
+  ac:     S('<rect x="2.5" y="4.5" width="19" height="9" rx="2.5"/><path d="M6 9.5h12M7 17.5c1.5 0 1.5 2 3 2M14 17.5c1.5 0 1.5 2 3 2"/>'),
+  curtain:S('<path d="M3 3.5h18M6 3.5v17M18 3.5v17M6 20.5c3.6-1.2 5.2-5.6 5.2-9.2V3.5M18 20.5c-3.6-1.2-5.2-5.6-5.2-9.2V3.5"/>'),
+  robot:  S('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3"/><path d="M12 3.5v3"/>'),
+  speaker:S('<rect x="6" y="2.5" width="12" height="19" rx="3"/><circle cx="12" cy="15" r="3.2"/><path d="M10.5 7h3"/>'),
+  camera: S('<path d="M3 8.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M15 11.5l6-3.5v9l-6-3.5"/>'),
+  purify: S('<rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M9 8c1.8 0 1.8 2 3.6 2M9 12c1.8 0 1.8 2 3.6 2M9 16c1.8 0 1.8 2 3.6 2"/>'),
+  humid:  S('<path d="M12 3s5.5 6 5.5 9.8A5.5 5.5 0 0 1 12 18.5a5.5 5.5 0 0 1-5.5-5.7C6.5 9 12 3 12 3z"/>'),
+  plug:   S('<path d="M9 2.5v6M15 2.5v6M5.5 8.5h13v2a6.5 6.5 0 0 1-13 0zM12 17v4.5"/>'),
+  tv:     S('<rect x="2.5" y="4" width="19" height="12.5" rx="2"/><path d="M8 20.5h8M12 16.5v4"/>'),
+  fan:    S('<circle cx="12" cy="12" r="2"/><path d="M12 10c0-3.5-1-6.5 1.5-6.5S16 7 12 10zM14 12c3.5 0 6.5-1 6.5 1.5S17 16 14 12zM10 12c-3.5 0-6.5 1-6.5-1.5S7 8 10 12z"/>'),
+  lock:   S('<rect x="4.5" y="10" width="15" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.3"/>'),
+};
+
+const RESIZE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="14 4 20 4 20 10"/><line x1="20" y1="4" x2="13.5" y2="10.5"/>
+  <polyline points="10 20 4 20 4 14"/><line x1="4" y1="20" x2="10.5" y2="13.5"/></svg>`;
+
+/* sizes：该设备类型支持切换到的尺寸集合（宽x高，单位=半格），顺序不重要，
+   点击 ⤢ 按钮时按 SIZE_ORDER 的顺序循环、跳过不支持的档位。
+   所有设备的初始尺寸都固定是 1x1。 */
+const DEVICES = [
+  { icon:"bulb",    name:"客厅主灯",   sub:"客厅", sizes:["1x0.5","1x1"] },
+  { icon:"ac",      name:"客厅空调",   sub:"客厅", sizes:["1x1","2x1","2x2"] },
+  { icon:"tv",      name:"电视",       sub:"客厅", sizes:["1x1","2x1"] },
+  { icon:"curtain", name:"电动窗帘",   sub:"客厅", sizes:["1x0.5","1x1"] },
+  { icon:"robot",   name:"扫地机器人", sub:"客厅", sizes:["1x0.5","1x1","2x1","2x2"] },
+  { icon:"speaker", name:"智能音箱",   sub:"主卧", sizes:["1x1","2x1"] },
+  { icon:"camera",  name:"门口摄像头", sub:"玄关", sizes:["1x1","2x2"] },
+  { icon:"purify",  name:"空气净化器", sub:"主卧", sizes:["1x1","2x1","2x2"] },
+  { icon:"humid",   name:"加湿器",     sub:"主卧", sizes:["1x1"] },
+  { icon:"fan",     name:"循环扇",     sub:"书房", sizes:["1x0.5","1x1"] },
+  { icon:"plug",    name:"阳台插座",   sub:"阳台", sizes:["1x1"] },
+  { icon:"lock",    name:"智能门锁",   sub:"玄关", sizes:["1x1","2x1"] },
+];
+
+/* ---------- 渲染一台手机 ---------- */
+function cardHTML(d, i){
+  return `<div class="card" data-i="${i}" data-size="1x1">
+    <div class="row1">
+      <div class="ico">${ICONS[d.icon] || ICONS.bulb}</div>
+      <button class="resize" aria-label="调整尺寸">${RESIZE_ICON}</button>
+    </div>
+    <div class="txt">
+      <div class="name">${d.name}</div>
+      <div class="sub">${d.sub}</div>
+    </div>
+  </div>`;
+}
+
+function phone(plan){
+  const wrap = document.createElement("div");
+  wrap.className = "phone-wrap";
+  wrap.innerHTML = `
+    <div class="phone-tag">方案 ${plan} · ${plan==="A" ? "大卡片 2 列" : "小卡片 3 列"}</div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="statusbar"><span>9:41</span><span class="icons">▮▮▮ ᯤ 🔋</span></div>
+      <div class="navbar">
+        <span class="act">取消</span>
+        <span class="title">编辑卡片</span>
+        <span class="act done">完成</span>
+      </div>
+      <div class="edit-tip">长按卡片可拖动排序 · 点 ⤢ 调整单卡尺寸</div>
+      <div class="screen">
+        <div class="grid plan-${plan}">${DEVICES.map(cardHTML).join("")}</div>
+      </div>
+    </div>`;
+
+  const grid = wrap.querySelector(".grid");
+  if(plan === "A") relayout(grid);
+  enableSort(grid);
+  grid.addEventListener("click", e=>{
+    const btn = e.target.closest(".resize"); if(!btn) return;
+    e.stopPropagation();
+    if(plan !== "A"){ toast("尺寸调整交互待定义 —— 等你的方案"); return; }
+
+    const card = btn.closest(".card");
+    const device = DEVICES[+card.dataset.i];
+    const next = nextSize(card.dataset.size, device.sizes);
+    if(next === card.dataset.size){ hintNear(btn, "该设备不支持切换尺寸"); return; }
+    card.dataset.size = next;
+    relayout(grid);
+  });
+  return wrap;
+}
+
+/* 轮播式切尺寸：从当前档位往后找下一个该设备支持的档位，一圈找不到就原地不动 */
+const SIZE_ORDER = ["1x0.5","1x1","2x1","2x2"];
+function nextSize(current, supported){
+  const start = SIZE_ORDER.indexOf(current);
+  for(let k = 1; k <= SIZE_ORDER.length; k++){
+    const cand = SIZE_ORDER[(start + k) % SIZE_ORDER.length];
+    if(supported.includes(cand)) return cand;
+  }
+  return current;
+}
+
+/* ============================================================
+   方案 A 的占位算法：按列表顺序、半格（half-unit）为最小单位，
+   摆放游标只前进不后退（不回填已跳过的格子）。
+   1×0.5 特殊规则：单独一张时仍先按占满一个完整 1×1 高度的槽位来参与
+   碰撞检测（下半格不会被后面任何卡片占用、也不会被跳过的格子回填）；
+   只有列表里紧跟着它、中间没被别的卡片打断的下一张也是 1×0.5，两者
+   才叠在一起共享这一个槽位。孤立时预留但没有卡片渲染进去的那半格，
+   会在 relayout() 里被识别出来并把对应的网格行高度收缩成 0，视觉上
+   不留空档——但这只是"显示收缩"，不影响上面这套占位/碰撞逻辑本身，
+   后面卡片的落点该怎么算还是怎么算，不会因为收缩了显示高度就多塞
+   一张卡片进去。
+   ============================================================ */
+const SIZE_WH = {
+  "1x0.5":{w:1,h:1}, "1x1":{w:1,h:2}, "2x1":{w:2,h:2}, "2x2":{w:2,h:4},
+};
+
+function computeLayout(sizes){
+  const occupied = new Set();               // `${row}:${col}` 已占用的半格（含孤立 1×0.5 预留但不渲染的半格）
+  const fits = (row, col, w, h)=>{
+    if(col + w > 2) return false;
+    for(let r = row; r < row + h; r++)
+      for(let c = col; c < col + w; c++)
+        if(occupied.has(`${r}:${c}`)) return false;
+    return true;
+  };
+  const occupy = (row, col, w, h)=>{
+    for(let r = row; r < row + h; r++)
+      for(let c = col; c < col + w; c++)
+        occupied.add(`${r}:${c}`);
+  };
+  // 摆放游标：只按行优先顺序前进（同一行先列 0 后列 1，再换下一行），
+  // 从游标位置开始往后找第一个放得下的格子，绝不回头找更早被跳过的格子。
+  let curRow = 0, curCol = 0;
+  const findSlot = (w, h)=>{
+    let row = curRow, col = curCol;
+    while(!fits(row, col, w, h)){
+      col++;
+      if(col >= 2){ col = 0; row++; }
+    }
+    return {row, col};
+  };
+  const advanceCursor = (row, col, w)=>{
+    curRow = row; curCol = col + w;
+    if(curCol >= 2){ curCol = 0; curRow = row + 1; }
+  };
+
+  const positions = new Array(sizes.length);
+  for(let i = 0; i < sizes.length; i++){
+    if(sizes[i] === "1x0.5"){
+      const paired = sizes[i+1] === "1x0.5";
+      const {row, col} = findSlot(1, 2);       // 不管配不配对，都先占满一整个槽位
+      occupy(row, col, 1, 2);
+      positions[i] = {row, col, w:1, h:1};
+      advanceCursor(row, col, 1);
+      if(paired){
+        positions[i+1] = {row:row+1, col, w:1, h:1};
+        i++;                                    // 下一张已经在这里排完了，跳过
+      }
+    } else {
+      const {w, h} = SIZE_WH[sizes[i]];
+      const {row, col} = findSlot(w, h);
+      occupy(row, col, w, h);
+      positions[i] = {row, col, w, h};
+      advanceCursor(row, col, w);
+    }
+  }
+
+  // 找出真正"渲染出来的"半格行（区别于上面 occupied 里含预留但不渲染的半格）：
+  // 只要有一张卡片实际画进了这一行（不管哪一列），这一行的显示高度就保留；
+  // 一行两列都没有任何卡片实际落在这里（只是孤立 1×0.5 的预留空位），
+  // 才会在 relayout() 里被收缩成 0 高度。
+  const rendered = new Set();
+  positions.forEach(p=>{
+    for(let r = p.row; r < p.row + p.h; r++)
+      for(let c = p.col; c < p.col + p.w; c++)
+        rendered.add(`${r}:${c}`);
+  });
+  let maxRow = -1;
+  positions.forEach(p=> maxRow = Math.max(maxRow, p.row + p.h - 1));
+  const rowUsed = [];
+  for(let r = 0; r <= maxRow; r++){
+    rowUsed.push(rendered.has(`${r}:0`) || rendered.has(`${r}:1`));
+  }
+
+  return { positions, rowUsed };
+}
+
+function relayout(grid){
+  const cards = [...grid.children];
+  const sizes = cards.map(c => c.dataset.size);
+  const {positions, rowUsed} = computeLayout(sizes);
+  const pairStart = computePairs(sizes);
+
+  // 孤立 1×0.5 卡片下方预留但没有任何卡片渲染进去的半格行，把行高收缩成 0，
+  // 视觉上不留空档；真正有卡片落进去的行保持原本的半格高度
+  grid.style.gridTemplateRows = rowUsed.length
+    ? rowUsed.map(used => used ? "var(--unit)" : "0px").join(" ")
+    : "";
+
+  cards.forEach((card, i)=>{
+    const p = positions[i];
+    card.style.gridColumn = `${p.col + 1} / span ${p.w}`;
+    card.style.gridRow = `${p.row + 1} / span ${p.h}`;
+
+    // 孤立（没配对）的 1×0.5 卡片下方留白槽位：补一个不可见的占位块用来接住拖拽判定，
+    // 一旦这张卡配对成功或者变了尺寸，占位块要跟着撤掉
+    const lone05 = sizes[i] === "1x0.5" && pairStart[i] === -1;
+    const hit = [...card.children].find(c => c.classList.contains("blank-hit"));
+    if(lone05 && !hit){
+      const spacer = document.createElement("div");
+      spacer.className = "blank-hit";
+      card.appendChild(spacer);
+    } else if(!lone05 && hit){
+      hit.remove();
+    }
+  });
+}
+
+/* 找出当前列表里实际配成对的 1×0.5：pairStart[i] 是这张卡所在配对里第一张的下标，
+   落单（含未配对的 1×0.5）则是 -1。判定逻辑必须和 computeLayout() 完全一致，
+   否则拖拽时判断的配对关系会跟实际渲染出来的槽位对不上。 */
+function computePairs(sizes){
+  const pairStart = new Array(sizes.length).fill(-1);
+  for(let i = 0; i < sizes.length; i++){
+    if(sizes[i] === "1x0.5" && sizes[i+1] === "1x0.5"){
+      pairStart[i] = i; pairStart[i+1] = i;
+      i++;
+    }
+  }
+  return pairStart;
+}
+
+/* el 是 m/l（占满整行宽度）时专用：棋盘固定只有两列，m/l 自己也总是占满整行，
+   横坐标完全不用参与判断，只要触点的纵坐标落在哪一条"行带"里，那条行带就是
+   换位目标——不管这一行实际是两张 d 并排、d + 一对堆叠的 s、还是干脆只有一侧
+   有卡片另一侧彻底空着，统统是同一种情况，不用再分"干净整行"和"单侧空白"
+   两套判定，也不用依赖 elementFromPoint 命中 DOM 元素（那一侧真空着时根本没有
+   元素可命中）。
+   做法：把每张卡片按它占的半格行区间 [row, row+h) 做区间合并——区间有重叠
+   （同一行跨列）就并成同一条带，一路合并到某条带的纵向range 盖住 y 为止。
+   返回这条带涉及的卡片，按下标升序（即 DOM 原有顺序）排列——算法保证同一行里
+   col0 的内容必然比 col1 的内容先出现在列表里，这样换位后不会颠倒行内左右顺序。
+   触点落在网格最外沿以外、或者算出来的行带就是 el 自己所在的那一条，都返回
+   null，交给调用方直接放弃这次判定。
+   每条带的命中范围不是贴着卡片自己的渲染矩形（unionRect 只包含卡片本身，不
+   包含 margin/gap 造成的行间距）——否则相邻两条带之间会天然留一条够不到
+   任何一条带的"缝隙死区"，触点落在这条缝里时两条带的 [top,bottom] 都框不住，
+   判定直接失败。修正：命中范围延伸到与相邻带的中点为止（只对齐相邻带之间，
+   不越过整个网格最外沿），纵向上完全无缝覆盖，不会再有夹在中间打不到的 y。 */
+function computeRowBand(kids, positions, y){
+  const order = positions.map((_, i) => i).sort((a, b) => positions[a].row - positions[b].row);
+  const bands = [];
+  let band = null, bandEnd = -Infinity;
+  order.forEach(i=>{
+    const p = positions[i];
+    if(band && p.row < bandEnd){
+      band.push(i);
+      bandEnd = Math.max(bandEnd, p.row + p.h);
+    } else {
+      band = [i];
+      bands.push(band);
+      bandEnd = p.row + p.h;
+    }
+  });
+
+  const groups = bands.map(group => group.sort((a, b) => a - b).map(i => kids[i]));
+  const rects = groups.map(cards => unionRect(cards));
+
+  for(let i = 0; i < groups.length; i++){
+    const top = i === 0 ? rects[i].top : (rects[i - 1].bottom + rects[i].top) / 2;
+    const bottom = i === groups.length - 1 ? rects[i].bottom : (rects[i].bottom + rects[i + 1].top) / 2;
+    if(y >= top && y <= bottom) return groups[i];
+  }
+  return null;
+}
+
+/* 排布算法的游标只前进不回退：一张卡片如果在当前行的另一列放不下（比如后面
+   紧跟着一张 m/l，两列都放不下就整个挪到下一行），那一列在这一行就会永久
+   空着——没有任何 DOM 元素代表这片空白，elementFromPoint 天然命中不到。
+   这个函数按算法真实算出来的网格坐标兜底：找出"这一行只有一侧列有卡片、
+   另一侧彻底没有任何卡片渲染进去"的那些行，只要触点落在这一行的高度范围内
+   （不分左右列），就算命中这一行仅有的那张卡片（如果是一对 s，就命中配对
+   里的第一张，后续 unitOf() 会按配对规则把它还原成整对）。 */
+function findRowGapTarget(grid, kids, positions, pairStart, x, y){
+  const g = grid.getBoundingClientRect();
+  if(x < g.left || x > g.right) return null;
+
+  const seen = new Set();
+  for(let i = 0; i < positions.length; i++){
+    if(seen.has(i)) continue;
+    const p = positions[i];
+    if(p.w !== 1) continue;                 // 已经占满整行宽度的卡片（m/l）不存在这个问题
+
+    let unit = [i], row0 = p.row, h = p.h;
+    if(p.h === 1){
+      if(pairStart[i] === -1) continue;      // 孤立没配对的 s：垂直方向的空白另有 .blank-hit 处理
+      unit = [pairStart[i], pairStart[i] + 1];
+      row0 = positions[unit[0]].row; h = 2;
+    }
+    unit.forEach(idx => seen.add(idx));
+
+    const otherCol = p.col === 0 ? 1 : 0;
+    let alone = true;
+    for(let j = 0; j < positions.length; j++){
+      if(unit.includes(j)) continue;
+      const q = positions[j];
+      if(q.col <= otherCol && otherCol < q.col + q.w && q.row < row0 + h && row0 < q.row + q.h){
+        alone = false; break;
+      }
+    }
+    if(!alone) continue;
+
+    const r = unionRect(unit.map(idx => kids[idx]));
+    if(y >= r.top && y <= r.bottom) return kids[unit[0]];
+  }
+  return null;
+}
+
+// 一张卡片所属的"最小可移动单位"：配对中的 1×0.5 要整体一起移动，其余卡片就是它自己
+function unitOf(card, pairStart, kids){
+  const idx = kids.indexOf(card);
+  const ps = pairStart[idx];
+  return ps === -1 ? [card] : [kids[ps], kids[ps + 1]];
+}
+
+// 几张卡片（1~2 张）的外接矩形，用来把"拖到配对上"的判定热区扩大到整个槽位，
+// 而不是被拖到某一半的那一小块区域上
+function unionRect(cards){
+  const rects = cards.map(c => c.getBoundingClientRect());
+  const left = Math.min(...rects.map(r => r.left));
+  const top = Math.min(...rects.map(r => r.top));
+  const right = Math.max(...rects.map(r => r.right));
+  const bottom = Math.max(...rects.map(r => r.bottom));
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+// 拖拽落点判定用的目标热区：配对（两张卡）用外接矩形；孤立的 1×0.5 卡片要把
+// 它下方的 .blank-hit 预留半格也算进去——否则死区判定只按那张小卡片自己的可见
+// 区域算，落点落在预留空白上（明明已经被 elementFromPoint 命中到了这张卡）却因为
+// 死区判定用的矩形太小、直接被当成"落在边缘"而拒绝触发换位
+function targetHitRect(overUnit){
+  if(overUnit.length > 1) return unionRect(overUnit);
+  const card = overUnit[0];
+  const hit = [...card.children].find(c => c.classList.contains("blank-hit"));
+  return hit ? unionRect([card, hit]) : card.getBoundingClientRect();
+}
+
+// 把 unitA、unitB 两组卡片（各 1~2 张，DOM 序）整体互换位置，两组内部的相对顺序不变
+function swapUnits(grid, unitA, unitB){
+  const markerA = document.createComment("");
+  const markerB = document.createComment("");
+  grid.insertBefore(markerA, unitA[0]);
+  grid.insertBefore(markerB, unitB[0]);
+  unitA.forEach(c => grid.removeChild(c));
+  unitB.forEach(c => grid.removeChild(c));
+  unitB.forEach(c => grid.insertBefore(c, markerA));
+  unitA.forEach(c => grid.insertBefore(c, markerB));
+  grid.removeChild(markerA);
+  grid.removeChild(markerB);
+}
+
+/* ============================================================
+   拖拽排序：pointer events + FLIP 动画，鼠标 / 触屏通用
+   ============================================================ */
+const HOLD_MS = 100;   // 长按多久进入拖拽
+const MOVE_TOL = 6;    // 长按期间允许的手抖像素
+
+const DEAD = 0.12;     // 目标卡片四周的死区比例，防止边界来回横跳；数值是按比例算的死区
+                        // 边框，卡片越大死区的绝对像素就越宽，0.22 时大尺寸卡片（d/m/l）
+                        // 实测要拖到接近正中央才能触发换位，2026-09-24 收窄成 0.12
+const SWAP_LOCK = 240; // 一次换位动画期间不再判定，单位 ms
+
+function enableSort(grid){
+  let timer = null, armed = false, active = false, lock = false;
+  let el = null, ghost = null, sx = 0, sy = 0, ox = 0, oy = 0, bounds = null;
+  const planClass = [...grid.classList].find(c => c.startsWith("plan-"));
+
+  grid.addEventListener("pointerdown", e=>{
+    if(e.button != null && e.button !== 0) return;
+    if(e.target.closest(".resize")) return;
+    const card = e.target.closest(".card"); if(!card) return;
+
+    el = card; sx = e.clientX; sy = e.clientY; armed = true;
+    timer = setTimeout(()=>start(e.clientX, e.clientY), HOLD_MS);
+  });
+
+  function start(x, y){
+    if(!el) return;
+    active = true; armed = false; lock = false;
+    const r = el.getBoundingClientRect();
+    ox = x - r.left; oy = y - r.top;
+    const phone = el.closest(".phone");
+    bounds = phone.getBoundingClientRect();
+
+    // 浮层是"外层定位容器（.ghost）+ 里面一张卡片克隆"两层结构：
+    // 外层负责跟手位移/裁切，卡片克隆负责视觉样式——两者不能是同一个元素，
+    // 否则 .plan-A .card[...] 这类后代选择器（.plan-A 和 .card 分别在外层/卡片上）
+    // 会因为外层同时套了 .plan-A 和 .card 两个类、缺少真正的祖先-后代关系而失效，
+    // 表现为拖拽时 1×0.5 卡片"跳变"回默认的 1×1 样式。
+    ghost = document.createElement("div");
+    ghost.className = "ghost";
+    if(planClass) ghost.classList.add(planClass);   // 撑起 CSS 变量，也让 .plan-A .card 系列规则能命中里面的克隆卡片
+    ghost.style.width = r.width + "px";
+    ghost.style.height = r.height + "px";
+    const left0 = r.left - bounds.left, top0 = r.top - bounds.top;
+    ghost.style.transform = `translate(${left0}px,${top0}px) scale(1.04)`;
+
+    const ghostCard = el.cloneNode(true);
+    ghostCard.style.width = "100%";
+    ghostCard.style.height = "100%";
+    ghostCard.style.minHeight = "0";
+    ghostCard.style.margin = "0";
+    ghost.appendChild(ghostCard);
+
+    // 浮层挂在 .phone 内部（不是 body 下）：配合 .phone 自带的 overflow:hidden，
+    // 拖出手机边框的部分会被直接裁掉，而不是把浮层的位置钳制在边框以内
+    phone.appendChild(ghost);
+    el.classList.add("placeholder");
+    document.body.classList.add("dragging");
+    if(navigator.vibrate) navigator.vibrate(12);
+  }
+
+  function move(x, y){
+    const left = x - ox - bounds.left, top = y - oy - bounds.top;
+    ghost.style.transform = `translate(${left}px,${top}px) scale(1.04)`;
+    if(lock) return;                       // 换位动画没跑完，先不判定
+
+    const kids = [...grid.children];
+    const sizes = kids.map(c => c.dataset.size);
+    const pairStart = computePairs(sizes);
+    const isWide = el.dataset.size === "2x1" || el.dataset.size === "2x2";
+
+    let over, overUnit;
+
+    if(isWide){
+      // m/l 占满整行宽度，不需要 elementFromPoint 命中具体某张卡片，直接按
+      // 触点纵坐标找到目标行带（见 computeRowBand 注释）；行带天然就是换位
+      // 单位，不存在"命中的那一张"和"应该整体换位的一整行"不一致的问题，
+      // 单侧真空白的行也一并覆盖，不用再额外兜底。
+      const { positions } = computeLayout(sizes);
+      const band = computeRowBand(kids, positions, y);
+      if(!band || band.includes(el)) return;
+      over = band[0];
+      overUnit = band;
+    } else {
+      ghost.style.visibility = "hidden";
+      const under = document.elementFromPoint(x, y);
+      ghost.style.visibility = "";
+      over = under && under.closest(".card");
+      if(over && over.parentNode !== grid) over = null;
+
+      if(!over){
+        // elementFromPoint 在"这一行只有一侧列有卡片、另一侧列彻底没有任何卡片
+        // 渲染进去"的真空白区域里找不到任何 DOM 元素可命中——这种空白跟孤立
+        // 1×0.5 下方的预留半格不一样，没有 .blank-hit 占位块接着（那半格好歹
+        // 是同一张卡片自己的预留区域，可以用 CSS 挂在卡片下方；这里是"另一整列"
+        // 空着，没有一个天然归属的卡片可以挂占位块）。兜底：按算法真实算出来的
+        // 网格坐标，反推这一行仅有的那张卡片（或那一对堆叠的 s），只要触点落在
+        // 这一行的高度范围内（不分左右列），就算命中它。
+        const { positions } = computeLayout(sizes);
+        over = findRowGapTarget(grid, kids, positions, pairStart, x, y);
+      }
+      if(!over || over === el) return;
+
+      overUnit = unitOf(over, pairStart, kids);
+    }
+
+    if(overUnit.includes(el)){
+      // 目标正是 el 自己配对的另一半：交换这两张卡片的上下顺序（同一个槽位内部换位），
+      // 不是"忽略"——两张堆叠的 1×0.5 也应该能互相调换谁在上谁在下
+      const r = over.getBoundingClientRect();
+      const fx = (x - r.left) / r.width, fy = (y - r.top) / r.height;
+      if(fx < DEAD || fx > 1 - DEAD || fy < DEAD || fy > 1 - DEAD) return;
+
+      lock = true;
+      flip(grid, ()=>{
+        const elIdx = kids.indexOf(el), overIdx = kids.indexOf(over);
+        grid.insertBefore(el, elIdx < overIdx ? over.nextSibling : over);
+        if(grid.classList.contains("plan-A")) relayout(grid);
+      }, el);
+      setTimeout(()=>{ lock = false; }, SWAP_LOCK);
+      return;
+    }
+
+    // 必须拖进目标区域中心才换位，边缘一圈是死区；目标如果是一对 1×0.5，
+    // 热区按两张卡合并后的整个槽位算，孤立的 1×0.5 则连它下方预留的半格
+    // 也一起算进热区（见 targetHitRect），不是只按那张小卡片自己的可见
+    // 区域算，否则命中区域会小到很难拖准
+    //
+    // el 是 m/l 时横向不用这套逻辑：行带里如果只有一张卡（比如一行只有
+    // 左列一张 d、右列真空白），targetHitRect 算出来的矩形只有那张卡自己
+    // 半列宽，可实际热区（行带）是整行宽度——按半列宽算 fx，只要触点落在
+    // 「空的那一侧」，fx 必然跑出 [0,1] 之外，被死区判定当成"拖到边缘"误
+    // 挡掉，跟 README 里"整行不设左右死区"的规则矛盾。所以横向边界直接用
+    // 这个 grid 自己的整行宽度，纵向仍然用行带的并集（跟非 wide 分支一致）。
+    const r = isWide
+      ? (() => {
+          const g = grid.getBoundingClientRect(), band = unionRect(overUnit);
+          return { left: g.left, width: g.width, top: band.top, height: band.height };
+        })()
+      : targetHitRect(overUnit);
+    const fx = (x - r.left) / r.width, fy = (y - r.top) / r.height;
+    if(fx < DEAD || fx > 1 - DEAD || fy < DEAD || fy > 1 - DEAD) return;
+
+    // el 拖之前是不是配对里的一张：如果是，它被抽走以后搭档还会独占一整个槽位、
+    // 不会像普通卡片那样腾出空间，所以不能沿用"往前拖插到目标前面、往后拖插到
+    // 目标后面"那套按方向判断的位移规则，统一按"el 落到 over 的位置、over 顺势
+    // 后移"处理，才会是 over 被挤到后一个槽位而不是抢到 el 让出的槽位
+    const elWasPaired = pairStart[kids.indexOf(el)] !== -1;
+
+    lock = true;
+    flip(grid, ()=>{
+      if(overUnit.length > 1){
+        // 目标是配对：被拖卡片和这一整对互换位置，不拆散目标配对插进中间
+        swapUnits(grid, [el], overUnit);
+      } else if(elWasPaired){
+        grid.insertBefore(el, over);
+      } else {
+        // 普通插入式重排：只移动被拖卡片本身
+        const kids2 = [...grid.children];
+        const from = kids2.indexOf(el), to = kids2.indexOf(over);
+        grid.insertBefore(el, from < to ? over.nextSibling : over);
+      }
+      if(grid.classList.contains("plan-A")) relayout(grid);
+    }, el);
+    setTimeout(()=>{ lock = false; }, SWAP_LOCK);
+  }
+
+  function end(){
+    clearTimeout(timer); armed = false; lock = false;
+    if(active && ghost){
+      const r = el.getBoundingClientRect();
+      ghost.style.transition = "transform .2s cubic-bezier(.2,.7,.3,1)";
+      ghost.style.transform = `translate(${r.left - bounds.left}px,${r.top - bounds.top}px) scale(1)`;
+      const g = ghost, e2 = el;
+      setTimeout(()=>{ g.remove(); e2.classList.remove("placeholder"); }, 200);
+    }
+    ghost = null; el = null; active = false;
+    document.body.classList.remove("dragging");
+  }
+
+  document.addEventListener("pointermove", e=>{
+    if(armed && (Math.abs(e.clientX-sx) > MOVE_TOL || Math.abs(e.clientY-sy) > MOVE_TOL)){
+      clearTimeout(timer); armed = false; el = null;   // 判定为滚动，放弃
+      return;
+    }
+    if(active){ e.preventDefault(); move(e.clientX, e.clientY); }
+  }, {passive:false});
+
+  document.addEventListener("pointerup", end);
+  document.addEventListener("pointercancel", end);
+  // 拖拽中锁住页面滚动
+  document.addEventListener("touchmove", e=>{ if(active) e.preventDefault(); }, {passive:false});
+}
+
+/* FLIP：让 grid 重排后的位移带上动画；skip 的元素直接瞬移（拖拽占位块不参与，
+   否则它在动画途中的位置会干扰 elementFromPoint 命中判断） */
+function flip(grid, mutate, skip){
+  const items = [...grid.children];
+  const first = items.map(i => i.getBoundingClientRect());
+  mutate();
+  items.forEach((it, idx)=>{
+    if(it === skip) return;
+    const last = it.getBoundingClientRect();
+    const dx = first[idx].left - last.left, dy = first[idx].top - last.top;
+    if(!dx && !dy) return;
+    it.style.transition = "none";
+    it.style.transform = `translate(${dx}px,${dy}px)`;
+    requestAnimationFrame(()=>{
+      it.style.transition = "transform .22s cubic-bezier(.2,.7,.3,1)";
+      it.style.transform = "";
+    });
+  });
+}
+
+/* ---------- toast ---------- */
+let tTimer;
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(tTimer);
+  tTimer = setTimeout(()=>t.classList.remove("show"), 1800);
+}
+
+/* ---------- 就近提示气泡：紧贴触发它的按钮上方弹出，且跟随列表滚动 ---------- */
+let hintEl, hintTimer, hintAnchor;
+function positionHint(){
+  if(!hintEl || !hintAnchor || !hintEl.classList.contains("show")) return;
+  const phoneEl = hintAnchor.closest(".phone");
+  const br = hintAnchor.getBoundingClientRect();
+  const phone = phoneEl.getBoundingClientRect();
+
+  // 按钮跟着列表滚出手机屏幕范围了，气泡跟着一起隐藏，别飘在外面
+  if(br.bottom < phone.top || br.top > phone.bottom){
+    hintEl.classList.remove("show");
+    return;
+  }
+  const cx = br.left + br.width / 2;
+  const hr = hintEl.getBoundingClientRect();
+  let left = cx - hr.width / 2;
+  left = Math.min(Math.max(left, phone.left + 8), phone.right - hr.width - 8);
+  hintEl.style.left = left + "px";
+  hintEl.style.top = (br.top - hr.height - 14) + "px";
+  hintEl.style.setProperty("--arrow-left", (cx - left - 6) + "px");
+}
+document.addEventListener("scroll", positionHint, true);
+
+function hintNear(anchor, msg){
+  if(!hintEl){
+    hintEl = document.createElement("div");
+    hintEl.className = "hint";
+    document.body.appendChild(hintEl);
+  }
+  hintAnchor = anchor;
+  hintEl.textContent = msg;
+  hintEl.classList.add("show");
+  positionHint();
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(()=>hintEl.classList.remove("show"), 1800);
+}
+
+/* ---------- 视图切换 ---------- */
+const stage = document.getElementById("stage");
+function render(view){
+  stage.innerHTML = "";
+  if(view === "C") stage.append(phone("A"), phone("B"));
+  else stage.append(phone(view));
+}
+render("A");
+
+document.getElementById("viewSeg").addEventListener("click", e=>{
+  const b = e.target.closest("button"); if(!b) return;
+  document.querySelectorAll("#viewSeg button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on");
+  render(b.dataset.view);
+  window.scrollTo({top:0, behavior:"smooth"});
+});
+
+/* ---------- 问卷（占位逻辑） ---------- */
+let pick = null;
+document.getElementById("choices").addEventListener("click", e=>{
+  const c = e.target.closest(".choice"); if(!c) return;
+  document.querySelectorAll(".choice").forEach(x=>x.classList.remove("sel"));
+  c.classList.add("sel"); pick = c.dataset.v;
+  document.getElementById("submit").disabled = false;
+});
+document.getElementById("submit").addEventListener("click", function(){
+  this.outerHTML = `<div class="done">✓ 已记录你的选择：${pick}（暂未上报，等接入收集方式）</div>`;
+});
+</script>
+</body>
+</html>
