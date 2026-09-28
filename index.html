@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>设备卡片尺寸 A/B 调研</title>
+<title>Device Card Size A/B Test</title>
 <style>
 /* ========== 全局 ========== */
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{
-  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+  font-family:"SF Pro Text","SF Pro Display",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   background:#eceef2;color:#1c1d21;
   min-height:100vh;display:flex;flex-direction:column;align-items:center;
   padding:24px 16px 60px;
@@ -33,10 +33,6 @@ body.dragging{user-select:none;cursor:grabbing}
 /* ========== 手机外框 ========== */
 .stage{display:flex;gap:28px;justify-content:center;flex-wrap:wrap}
 .phone-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
-.phone-tag{
-  font-size:12px;font-weight:600;color:#6b6e78;letter-spacing:.5px;
-  background:#fff;border-radius:20px;padding:5px 14px;box-shadow:0 1px 3px rgba(0,0,0,.08)
-}
 .phone{
   width:340px;height:700px;background:#f5f6f8;border-radius:38px;
   box-shadow:0 18px 44px rgba(20,22,30,.16),0 0 0 9px #1c1d21,0 0 0 10px #35373f;
@@ -46,13 +42,12 @@ body.dragging{user-select:none;cursor:grabbing}
   position:absolute;top:8px;left:50%;transform:translateX(-50%);
   width:104px;height:26px;background:#1c1d21;border-radius:14px;
 }
-.statusbar{
-  height:44px;flex:0 0 44px;display:flex;align-items:center;justify-content:space-between;
-  padding:0 24px;font-size:13px;font-weight:600;position:relative;z-index:3;
-}
-.statusbar .icons{display:flex;gap:5px;align-items:center;font-size:11px}
-
 /* ========== 编辑态导航栏 ========== */
+/* statusbar/navbar/edit-tip 打包进 .phone-head 一起吸顶：桌面端 .screen 自己
+   有独立高度+滚动条，.phone-head 天然不受影响；移动端 .phone 高度变成 auto，
+   .screen 撑满内容不再自己滚动，改由页面（document）整体滚动，这时
+   position:sticky 才会真正生效，让这块头部在页面往下滚时贴在视口顶部不动 */
+.phone-head{position:sticky;top:0;z-index:4;background:#f5f6f8;flex:0 0 auto;padding-top:20px}
 .navbar{
   flex:0 0 48px;display:flex;align-items:center;justify-content:space-between;
   padding:0 18px;font-size:15px;
@@ -62,6 +57,17 @@ body.dragging{user-select:none;cursor:grabbing}
 .navbar .title{font-size:16px;font-weight:600}
 .edit-tip{
   font-size:11.5px;color:#9b9ea6;text-align:center;padding:0 18px 14px;line-height:1.5;
+}
+.batch-bar{
+  position:absolute;left:12px;right:12px;bottom:14px;z-index:5;
+  background:#fff;border-radius:16px;box-shadow:0 4px 16px rgba(20,22,30,.15);
+  display:flex;justify-content:space-around;padding:10px 4px;
+  transform:translateY(120%);opacity:0;transition:transform .25s ease,opacity .25s ease;
+  pointer-events:none;
+}
+.batch-bar.show{transform:translateY(0);opacity:1;pointer-events:auto}
+.batch-bar button{
+  background:none;border:0;font-size:13px;color:#1c1d21;padding:6px 10px;
 }
 
 /* 页面滚动区 */
@@ -76,7 +82,7 @@ body.dragging{user-select:none;cursor:grabbing}
 }
 .card{
   background:#fff;border-radius:var(--radius);padding:var(--pad);
-  min-height:var(--card-h);display:flex;flex-direction:column;
+  min-height:var(--card-h);min-width:0;display:flex;flex-direction:column;justify-content:space-between;
   box-shadow:0 1px 3px rgba(20,22,30,.06);
   position:relative;touch-action:manipulation;cursor:grab;
 }
@@ -90,10 +96,35 @@ body.dragging{user-select:none;cursor:grabbing}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .card .sub{
-  font-size:var(--fs-sub);color:#a8abb3;margin-top:1px;
+  font-size:var(--fs-sub);color:#a8abb3;margin-top:2px;margin-right:calc(var(--btn) + 6px);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .card .txt{margin-top:var(--txt-mt)}
+/* row2 默认对布局零影响，.txt 表现得跟直接挂在 .card 下完全一样；
+   .ctrl 只在 2x1/2x2 档位下才会显示（见下面 .plan-A 的尺寸规则） */
+.card .row2{display:contents}
+.card .ctrl{display:none}
+.card .ctrl .val{font-size:11.5px;color:#a8abb3;white-space:nowrap}
+.card .ctrl .switch{width:34px;height:20px;border-radius:10px;background:#e4e6ea;position:relative;flex:0 0 auto}
+.card .ctrl .switch.on{background:#34c759}
+.card .ctrl .switch i{
+  position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left .15s;
+}
+.card .ctrl .switch.on i{left:16px}
+.card .ctrl .bar{width:56px;height:6px;border-radius:3px;background:#e4e6ea;overflow:hidden;flex:0 0 auto}
+.card .ctrl .bar i{display:block;height:100%;background:#8e9198;border-radius:3px}
+.card .ctrl .step{
+  flex:1 1 0;height:40px;border-radius:20px;background:#e4e6ea;color:#8e9198;
+  font-size:17px;font-weight:600;display:flex;align-items:center;justify-content:center;
+}
+.card .ctrl .stepval{font-size:24px;font-weight:700;color:#1c1d21;flex:0 0 auto;white-space:nowrap}
+.card .check{
+  position:absolute;right:10px;bottom:10px;width:var(--btn);height:var(--btn);border-radius:50%;
+  border:1.5px solid #c7cad1;background:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:14px;color:transparent;line-height:1;
+}
+.card.selected .check{background:#0a84ff;border-color:#0a84ff;color:#fff}
 
 /* 右上角：调整尺寸入口 */
 .resize{
@@ -124,8 +155,8 @@ body.dragging{user-select:none;cursor:grabbing}
 
 /* ---- 方案 A：大卡片（2 列） ---- */
 .plan-A{
-  --cols:2; --gap:12px; --edge:16px; --card-h:116px; --pad:14px; --radius:20px;
-  --ico:34px; --btn:22px; --fs-name:14.5px; --fs-sub:12px; --txt-mt:16px;
+  --cols:2; --gap:10px; --edge:10px; --card-h:120px; --pad:10px; --radius:18px;
+  --ico:40px; --btn:24px; --fs-name:16px; --fs-sub:14px; --txt-mt:16px;
   --unit:calc((var(--card-h) + var(--gap)) / 2);
   /* 卡片尺寸占位：半格网格，只在方案 A 生效。每张卡片的 grid-column/grid-row
      由 JS 里的 relayout() 显式计算并写成行内样式（见 computeLayout()），
@@ -143,7 +174,44 @@ body.dragging{user-select:none;cursor:grabbing}
 .plan-A .card[data-size="1x0.5"] .ico{display:none}
 .plan-A .card[data-size="1x0.5"] .sub{display:none}
 .plan-A .card[data-size="1x0.5"] .row1{flex:0 0 auto}
-.plan-A .card[data-size="1x0.5"] .txt{margin-top:0;order:-1;flex:1 1 auto;min-width:0}
+.plan-A .card[data-size="1x0.5"] .txt{margin-top:0;order:-1;flex:1 1 auto;min-width:0;margin-right:calc(var(--btn) + 6px)}
+/* 1x0.5 没有背景色变化可以指示选中了，勾选圆圈挪到尺寸按钮左边、垂直居中，
+   而不是像其他尺寸那样绝对定位在右下角（那个位置会跟这一档本来就贴右边的
+   ⤢ 按钮撞在一起） */
+.plan-A .card[data-size="1x0.5"] .check{
+  top:50%;bottom:auto;right:calc(var(--pad) + var(--btn) + 6px);
+  transform:translateY(-50%);
+}
+/* 2x1：只多了横向空间，卡片高度不变。图标 + 设备名/房间 + 尺寸按钮合并成一行
+   （靠横向多出来的空间一次性放下），状态控件独占下一行、撑满宽度。
+   用 display:contents 把 .row1/.row2 拆开，让图标/文字/按钮/控件都变成 .card
+   自己的直接 flex 子项，再用 order 重新排布成两行——控件用 flex-basis:100% 强制
+   自己单独换行，是常见的"flex 换行占满整行"写法 */
+.plan-A .card[data-size="2x1"]{
+  flex-direction:row;flex-wrap:wrap;align-items:center;column-gap:10px;row-gap:10px;
+}
+.plan-A .card[data-size="2x1"] .row1{display:contents}
+.plan-A .card[data-size="2x1"] .row2{display:contents}
+.plan-A .card[data-size="2x1"] .ico{order:1}
+.plan-A .card[data-size="2x1"] .txt{order:2;margin-top:0;flex:1 1 auto;min-width:0}
+.plan-A .card[data-size="2x1"] .resize{order:3}
+.plan-A .card[data-size="2x1"] .ctrl{
+  order:4;flex:1 1 100%;display:flex;align-items:center;justify-content:center;gap:8px;
+}
+/* 步进器（目前只有空调）单独定高、按钮/数值间距更大，跟开关/进度条这类
+   高度更小的控件区分开——用 :has(.step) 只命中含步进器的 .ctrl，不影响
+   同一档位下其他设备的控件行 */
+.plan-A .card[data-size="2x1"] .ctrl:has(.step){height:32px;gap:16px}
+/* 2x2：横向+纵向空间都翻倍，状态控件放大一档、推到卡片底部 */
+.plan-A .card[data-size="2x2"] .row2{display:flex;flex-direction:column;flex:1}
+.plan-A .card[data-size="2x2"] .ctrl{
+  display:flex;align-items:center;gap:10px;margin-top:auto;padding-top:14px;
+}
+.plan-A .card[data-size="2x2"] .ctrl .val{font-size:13px}
+.plan-A .card[data-size="2x2"] .ctrl .switch{width:44px;height:26px}
+.plan-A .card[data-size="2x2"] .ctrl .switch i{width:22px;height:22px}
+.plan-A .card[data-size="2x2"] .ctrl .switch.on i{left:20px}
+.plan-A .card[data-size="2x2"] .ctrl .bar{flex:1 1 0;width:auto;min-width:0;height:8px}
 /* ---- 方案 B：小卡片（3 列） ---- */
 .plan-B{
   --cols:3; --gap:9px; --edge:14px; --card-h:94px; --pad:10px; --radius:16px;
@@ -204,7 +272,7 @@ body.dragging{user-select:none;cursor:grabbing}
 @media (max-width:760px){
   body{padding:12px 0 40px;background:#f5f6f8}
   .topbar{padding:0 16px}
-  .phone{width:100vw;height:auto;min-height:calc(100vh - 150px);border-radius:0;box-shadow:none}
+  .phone{width:100vw;height:auto;min-height:calc(100vh - 150px);border-radius:0;box-shadow:none;overflow:visible}
   .phone .notch{display:none}
   .stage{gap:16px;width:100%}
   .survey{margin:24px 16px 0;width:calc(100% - 32px)}
@@ -215,26 +283,26 @@ body.dragging{user-select:none;cursor:grabbing}
 <body>
 
 <div class="topbar">
-  <h1>设备卡片尺寸方案调研</h1>
-  <p class="sub">页面处于「编辑态」：可长按拖动卡片排序，点右上角按钮调整尺寸</p>
+  <h1>Device Card Size Study</h1>
+  <p class="sub">The page is in "Edit" mode: long-press to reorder cards, tap the button in the top-right corner to resize</p>
   <div class="seg" id="viewSeg">
-    <button data-view="A" class="on">方案 A · 大卡片</button>
-    <button data-view="B">方案 B · 小卡片</button>
-    <button data-view="C" class="cmp-only">并排对比</button>
+    <button data-view="A" class="on">Plan A · Large Cards</button>
+    <button data-view="B">Plan B · Small Cards</button>
+    <button data-view="C" class="cmp-only">Side by Side</button>
   </div>
 </div>
 
 <div class="stage" id="stage"></div>
 
 <div class="survey">
-  <h2>你更倾向哪个方案？</h2>
-  <p class="tip">（占位问卷，等你提供正式题目后替换）</p>
+  <h2>Which layout do you prefer?</h2>
+  <p class="tip">(Placeholder survey — will be replaced with the real questions)</p>
   <div class="choices" id="choices">
-    <div class="choice" data-v="A"><i class="dot"></i>方案 A · 大卡片，信息更清楚</div>
-    <div class="choice" data-v="B"><i class="dot"></i>方案 B · 小卡片，一屏看得更多</div>
-    <div class="choice" data-v="X"><i class="dot"></i>都可以 / 没有明显偏好</div>
+    <div class="choice" data-v="A"><i class="dot"></i>Plan A · Large cards, clearer information</div>
+    <div class="choice" data-v="B"><i class="dot"></i>Plan B · Small cards, more visible per screen</div>
+    <div class="choice" data-v="X"><i class="dot"></i>Either is fine / No strong preference</div>
   </div>
-  <button class="submit" id="submit" disabled>提交</button>
+  <button class="submit" id="submit" disabled>Submit</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -270,32 +338,49 @@ const RESIZE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 /* sizes：该设备类型支持切换到的尺寸集合（宽x高，单位=半格），顺序不重要，
    点击 ⤢ 按钮时按 SIZE_ORDER 的顺序循环、跳过不支持的档位。
    所有设备的初始尺寸都固定是 1x1。 */
+/* ctrl/on/pct/state：2x1、2x2 档位下展示的状态控件，只给 sizes 里包含
+   2x1 或 2x2 的设备配置，其余设备的卡片永远不会渲染到这个尺寸，不配置。
+   ctrl:"toggle" 用 on 表示开关状态，ctrl:"slider" 用 pct(0-100) 表示进度条填充比例，
+   state 是两者共用的展示文案。 */
 const DEVICES = [
-  { icon:"bulb",    name:"客厅主灯",   sub:"客厅", sizes:["1x0.5","1x1"] },
-  { icon:"ac",      name:"客厅空调",   sub:"客厅", sizes:["1x1","2x1","2x2"] },
-  { icon:"tv",      name:"电视",       sub:"客厅", sizes:["1x1","2x1"] },
-  { icon:"curtain", name:"电动窗帘",   sub:"客厅", sizes:["1x0.5","1x1"] },
-  { icon:"robot",   name:"扫地机器人", sub:"客厅", sizes:["1x0.5","1x1","2x1","2x2"] },
-  { icon:"speaker", name:"智能音箱",   sub:"主卧", sizes:["1x1","2x1"] },
-  { icon:"camera",  name:"门口摄像头", sub:"玄关", sizes:["1x1","2x2"] },
-  { icon:"purify",  name:"空气净化器", sub:"主卧", sizes:["1x1","2x1","2x2"] },
-  { icon:"humid",   name:"加湿器",     sub:"主卧", sizes:["1x1"] },
-  { icon:"fan",     name:"循环扇",     sub:"书房", sizes:["1x0.5","1x1"] },
-  { icon:"plug",    name:"阳台插座",   sub:"阳台", sizes:["1x1"] },
-  { icon:"lock",    name:"智能门锁",   sub:"玄关", sizes:["1x1","2x1"] },
+  { icon:"bulb",    name:"Living Room Light", sub:"Living Room",     sizes:["1x0.5","1x1"] },
+  { icon:"ac",      name:"Living Room AC",    sub:"Living Room",     sizes:["1x0.5","1x1","2x1"], ctrl:"stepper", val:"25°❄" },
+  { icon:"tv",      name:"TV",                sub:"Living Room",     sizes:["1x1","2x1"], ctrl:"toggle", on:true, state:"Playing" },
+  { icon:"curtain", name:"Curtains",          sub:"Living Room",     sizes:["1x0.5","1x1"] },
+  { icon:"robot",   name:"Robot Vacuum",      sub:"Living Room",     sizes:["1x0.5","1x1","2x1","2x2"], ctrl:"toggle", on:true, state:"Cleaning" },
+  { icon:"speaker", name:"Smart Speaker",     sub:"Master Bedroom",  sizes:["1x1","2x1"], ctrl:"toggle", on:true, state:"Playing" },
+  { icon:"camera",  name:"Front Door Camera", sub:"Entryway",        sizes:["1x1","2x2"], ctrl:"toggle", on:true, state:"Recording" },
+  { icon:"purify",  name:"Air Purifier",      sub:"Master Bedroom",  sizes:["1x1","2x1","2x2"], ctrl:"slider", pct:70, state:"70% · AQI Good" },
+  { icon:"humid",   name:"Humidifier",        sub:"Master Bedroom",  sizes:["1x1"] },
+  { icon:"fan",     name:"Circulator Fan",    sub:"Study",           sizes:["1x0.5","1x1"] },
+  { icon:"plug",    name:"Balcony Outlet",    sub:"Balcony",         sizes:["1x1"] },
+  { icon:"lock",    name:"Smart Lock",        sub:"Entryway",        sizes:["1x1","2x1"], ctrl:"toggle", on:true, state:"Locked" },
 ];
 
 /* ---------- 渲染一台手机 ---------- */
 function cardHTML(d, i){
+  let inner = "";
+  if(d.ctrl === "slider"){
+    inner = `<div class="bar"><i style="width:${d.pct}%"></i></div><div class="val">${d.state}</div>`;
+  } else if(d.ctrl === "stepper"){
+    inner = `<div class="step">−</div><div class="stepval">${d.val}</div><div class="step">+</div>`;
+  } else if(d.ctrl === "toggle"){
+    inner = `<div class="switch${d.on ? " on" : ""}"><i></i></div><div class="val">${d.state}</div>`;
+  }
+  const ctrl = inner ? `<div class="ctrl">${inner}</div>` : "";
   return `<div class="card" data-i="${i}" data-size="1x1">
     <div class="row1">
       <div class="ico">${ICONS[d.icon] || ICONS.bulb}</div>
-      <button class="resize" aria-label="调整尺寸">${RESIZE_ICON}</button>
+      <button class="resize" aria-label="Resize">${RESIZE_ICON}</button>
     </div>
-    <div class="txt">
-      <div class="name">${d.name}</div>
-      <div class="sub">${d.sub}</div>
+    <div class="row2">
+      <div class="txt">
+        <div class="name">${d.name}</div>
+        <div class="sub">${d.sub}</div>
+      </div>
+      ${ctrl}
     </div>
+    <div class="check">✓</div>
   </div>`;
 }
 
@@ -303,18 +388,23 @@ function phone(plan){
   const wrap = document.createElement("div");
   wrap.className = "phone-wrap";
   wrap.innerHTML = `
-    <div class="phone-tag">方案 ${plan} · ${plan==="A" ? "大卡片 2 列" : "小卡片 3 列"}</div>
     <div class="phone">
       <div class="notch"></div>
-      <div class="statusbar"><span>9:41</span><span class="icons">▮▮▮ ᯤ 🔋</span></div>
-      <div class="navbar">
-        <span class="act">取消</span>
-        <span class="title">编辑卡片</span>
-        <span class="act done">完成</span>
+      <div class="phone-head">
+        <div class="navbar">
+          <span class="act">Cancel</span>
+          <span class="title">Edit Cards</span>
+          <span class="act done">Done</span>
+        </div>
+        <div class="edit-tip">Long-press to reorder · Tap ⤢ to resize a card</div>
       </div>
-      <div class="edit-tip">长按卡片可拖动排序 · 点 ⤢ 调整单卡尺寸</div>
       <div class="screen">
         <div class="grid plan-${plan}">${DEVICES.map(cardHTML).join("")}</div>
+      </div>
+      <div class="batch-bar">
+        <button data-act="share">Share</button>
+        <button data-act="fav">Favorite</button>
+        <button data-act="room">Move Room</button>
       </div>
     </div>`;
 
@@ -324,14 +414,19 @@ function phone(plan){
   grid.addEventListener("click", e=>{
     const btn = e.target.closest(".resize"); if(!btn) return;
     e.stopPropagation();
-    if(plan !== "A"){ toast("尺寸调整交互待定义 —— 等你的方案"); return; }
+    if(plan !== "A"){ toast("Resize interaction not yet implemented — pending your design"); return; }
 
     const card = btn.closest(".card");
     const device = DEVICES[+card.dataset.i];
     const next = nextSize(card.dataset.size, device.sizes);
-    if(next === card.dataset.size){ hintNear(btn, "该设备不支持切换尺寸"); return; }
+    if(next === card.dataset.size){ hintNear(btn, "This device doesn't support this size"); return; }
     card.dataset.size = next;
     relayout(grid);
+  });
+  wrap.querySelector(".batch-bar").addEventListener("click", e=>{
+    const btn = e.target.closest("button"); if(!btn) return;
+    const label = {share:"Share", fav:"Favorite", room:"Move Room"}[btn.dataset.act];
+    toast(`Batch ${label}: not yet implemented`);
   });
   return wrap;
 }
@@ -611,7 +706,9 @@ function swapUnits(grid, unitA, unitB){
 /* ============================================================
    拖拽排序：pointer events + FLIP 动画，鼠标 / 触屏通用
    ============================================================ */
-const HOLD_MS = 100;   // 长按多久进入拖拽
+const HOLD_MS = 180;   // 长按多久进入拖拽——先从 100 调到 350 解决点击误判成拖拽，
+                        // 又嫌 350/200 太慢，回调到 180；仍明显长于普通点击（通常
+                        // 100ms 以内松手），同时更快进入拖拽态
 const MOVE_TOL = 6;    // 长按期间允许的手抖像素
 
 const DEAD = 0.12;     // 目标卡片四周的死区比例，防止边界来回横跳；数值是按比例算的死区
@@ -775,7 +872,18 @@ function enableSort(grid){
     setTimeout(()=>{ lock = false; }, SWAP_LOCK);
   }
 
+  function toggleSelect(card){
+    card.classList.toggle("selected");
+    const n = grid.querySelectorAll(".card.selected").length;
+    const phoneEl = grid.closest(".phone");
+    phoneEl.querySelector(".navbar .title").textContent = n > 0 ? `${n} Selected` : "Edit Cards";
+    phoneEl.querySelector(".batch-bar").classList.toggle("show", n > 0);
+  }
+
   function end(){
+    // 没有触发过拖拽（armed 仍为 true 且 active 从未变 true）的一次干净点击，
+    // 用来切换选中态；必须在下面重置 armed 之前先读一次
+    const tapped = armed && el && !active ? el : null;
     clearTimeout(timer); armed = false; lock = false;
     if(active && ghost){
       const r = el.getBoundingClientRect();
@@ -786,6 +894,7 @@ function enableSort(grid){
     }
     ghost = null; el = null; active = false;
     document.body.classList.remove("dragging");
+    if(tapped) toggleSelect(tapped);
   }
 
   document.addEventListener("pointermove", e=>{
@@ -894,7 +1003,7 @@ document.getElementById("choices").addEventListener("click", e=>{
   document.getElementById("submit").disabled = false;
 });
 document.getElementById("submit").addEventListener("click", function(){
-  this.outerHTML = `<div class="done">✓ 已记录你的选择：${pick}（暂未上报，等接入收集方式）</div>`;
+  this.outerHTML = `<div class="done">✓ Your choice has been recorded: ${pick} (not yet submitted — pending data collection setup)</div>`;
 });
 </script>
 </body>
