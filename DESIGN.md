@@ -1046,6 +1046,61 @@ Playwright 实测（`verify_r25.js`）：菜单图标顶部到菜单顶边、文
 准确。回归测试（`regress.js`/`verify_r19.js`）确认方案 A/B 拖拽、并排对比、移动
 端面板定位均无回归，控制台无报错。
 
+## 第二十三轮：空白区域鼠标拖拽模拟滚动 + 修复方案 B 面板打开时背后列表仍可滚动的 bug（2026-09-29）
+
+用户截图发现 PC 端设备列表只能用滚轮滚动，问能不能像手机触摸那样用鼠标按住拖拽
+滚动；讨论后（详见对话记录，未落成单独章节）确认这个 demo 本来就要覆盖手机和
+PC 两种打开方式（做 A/B 调研，测试者用哪种设备打开是未知的），所以桌面体验同样
+重要，不是"仅预览用"的次要场景。原计划直接照搬触摸的"长按卡片拖拽换位"手势去
+兼容鼠标拖拽滚动，风险评估后放弃——那样要在同一个 `.card` 的 pointerdown 上做
+"是想拖拽换位还是想拖拽滚动"的手势判定，鼠标端没有触摸端"没 preventDefault 就
+会有浏览器原生 pan 接管"这种天然兜底，判定逻辑得完全自己写，还会直接触碰本来就
+经过好几轮参数调优、比较脆弱的 `enableSort()`。改用风险更低的方案：只在网格的
+空白区域（卡片之间的缝隙、`.grid` 内的留白）新增鼠标拖拽滚动，这块区域在
+`enableSort()` 的 `pointerdown` 处理里本来就是完全空转的（`const card =
+e.target.closest(".card"); if(!card) return;`），新增一个独立的 `pointerdown`
+监听、只在命中非卡片区域时生效，跟换位拖拽逻辑零交集、互不影响。
+
+同一条消息里用户还报了一个 bug：方案 B 的尺寸选择面板（底部弹出、带黑色蒙层）
+打开后，在蒙层区域滑动/拖拽，蒙层下方的设备列表仍然会跟着滚动——蒙层视觉上挡住
+了列表，但没有真正锁定列表的滚动能力。
+
+**空白区域拖拽滚动**（`enableBlankScroll(screen)`，`phone()` 里紧跟着
+`enableSort(grid)` 调用）：只认 `pointerType === "mouse"`（触摸本来就有原生
+滚动，不需要也不该拦截，避免跟原生触摸滚动打架），命中 `.card` 直接放弃处理。
+按下瞬间用 `screen.scrollHeight <= screen.clientHeight` 判断实际滚动的容器是
+`.screen` 自己（桌面端固定高度 `.phone` 场景）还是 `document`（浏览器窗口窄到
+触发移动端断点、`.phone` 变自适应高度场景，见 `.phone-head` 旁注释描述的两种
+滚动归属模型），两种情况都用鼠标垂直拖拽距离换算成对应的滚动位移。光标态：
+`.screen` 默认 `cursor:grab`，拖拽中加 `.blank-dragging` 类切到
+`cursor:grabbing` 并临时禁用文本选中；`.card` 自己的 `cursor:grab`（本来给换位
+拖拽用）specificity 相同但作用在卡片自身元素上，两者不冲突。
+
+**面板打开时锁滚动**（`openSheet()` 末尾 `mask`/`sheet` 加 `show` 类那两行旁）：
+`screen.style.overflow = "hidden"` 锁桌面端 `.screen` 自身的滚动容器；同时
+`document.body.style.overflow = "hidden"` 锁移动端场景下真正在滚动的
+`document`。两者同时锁不会互相冲突，因为同一时刻只有其中一个是真正生效的滚动
+主体。解锁写在 `close()` 里对称清空这两个 `overflow` 内联样式。另外补了一处
+防泄漏：`render(view)` 切换顶部视图（Plan A / Plan B / Side by Side）时会直接
+`stage.innerHTML = ""` 整体替换 DOM，如果这时方案 B 的面板还开着、没有走
+`close()` 就被摧毁，`document.body` 上的锁会永久残留（`.screen` 上的锁则会跟着
+被摧毁的元素一起消失，不存在泄漏风险，因为它不是全局状态）。桌面宽度下
+`.sheet-mask` 只覆盖 `.phone` 内部（不含顶部视图切换控件，只有移动端断点才会
+`position:fixed` 覆盖全屏），所以"面板开着时切视图"在桌面端是真实可触发的路径，
+不是纯理论 case。修复：`render()` 一进来就无条件清空 `document.body.style
+.overflow`，反正 `stage.innerHTML = ""` 马上会把面板 DOM 也一起清掉。
+
+Playwright 实测（`verify_r26.js`）：①空白区域鼠标拖拽能让 `.screen.scrollTop`
+从 0 变化到 150，在卡片本身上做同样的拖拽则 `scrollTop` 完全不变（确认两套手势
+没有互相干扰）；②面板打开时用真实滚轮事件（`page.mouse.wheel`，不是直接赋值
+`scrollTop`——直接赋值会绕过 `overflow:hidden` 对用户输入的拦截，不代表真实
+拖拽/滚轮场景）去滚桌面端 `.screen`，`scrollTop` 保持 0；关闭面板后同样的滚轮
+输入能正常生效；③移动端视口下同样用真实滚轮验证 `window.scrollY` 在面板打开时
+保持 0、关闭后恢复正常；④桌面宽度下"面板开着时点顶部 Plan A 切视图"之后
+`document.body.overflow` 正确恢复成 `visible`，没有锁泄漏。回归测试
+（`regress.js`/`verify_r19.js`/`verify_r24.js`/`verify_r25.js`）以及额外补的
+点选/长按换位拖拽实测均确认无回归、控制台无报错。
+
 ## 当前进度（2026-09-24）
 
 方案 A 的**拖拽排序 + 改尺寸补位排布**这两套核心交互逻辑，已经过用户实测反复

@@ -192,8 +192,10 @@ body.dragging{user-select:none;cursor:grabbing}
 }
 
 /* 页面滚动区 */
-.screen{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-top:4px}
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-top:4px;cursor:grab}
 .screen::-webkit-scrollbar{display:none}
+/* 桌面端在空白处按住拖拽模拟滚动时的态（2026-09-29 第二十三轮，见 enableBlankScroll） */
+.screen.blank-dragging{cursor:grabbing;user-select:none}
 
 /* ========== 设备卡片网格（A/B 差异核心） ========== */
 .grid{
@@ -767,6 +769,7 @@ function phone(plan){
   const grid = wrap.querySelector(".grid");
   relayout(grid);
   enableSort(grid);
+  enableBlankScroll(wrap.querySelector(".screen"));
   grid.addEventListener("click", e=>{
     const btn = e.target.closest(".resize"); if(!btn) return;
     e.stopPropagation();
@@ -788,6 +791,43 @@ function phone(plan){
     toast(`Batch ${label}: not yet implemented`, btn.closest(".batch-bar"));
   });
   return wrap;
+}
+
+/* ---------- 桌面端空白区域拖拽模拟滚动（2026-09-29 第二十三轮） ----------
+   移动端触摸滑动自带浏览器原生惯性滚动；桌面鼠标没有对应的原生"按住拖内容来滚动"
+   手势，只认滚轮/滚动条。这里只在网格空白处（卡片间缝隙、上下留白）补一个鼠标拖拽
+   换算成滚动的手势：只认 pointerType === "mouse"（触摸已经原生可用，不需要也不该
+   拦截），且命中 .card 直接放弃处理，跟 enableSort() 里"长按卡片才换位"的拖拽手势
+   （只认卡片区域的 pointerdown）完全不重叠、互不干扰。
+   实际滚动的容器分桌面/移动两种（跟 .phone-head 旁注释描述的滚动归属模型一致）：
+   桌面下 .screen 自己是滚动容器；但浏览器窗口窄到触发移动端布局断点时，.phone 变
+   成自适应高度、.screen 本身没有内部溢出，真正滚动的是 document——按下瞬间用
+   scrollHeight/clientHeight 判断当前是哪种情况，两种都用鼠标拖拽覆盖到 */
+function enableBlankScroll(screen){
+  let dragging = false, startY = 0, startTop = 0, useWindow = false;
+  screen.addEventListener("pointerdown", e=>{
+    if(e.pointerType !== "mouse" || e.button !== 0) return;
+    if(e.target.closest(".card")) return;
+    dragging = true;
+    startY = e.clientY;
+    useWindow = screen.scrollHeight <= screen.clientHeight;
+    startTop = useWindow ? window.scrollY : screen.scrollTop;
+    screen.setPointerCapture(e.pointerId);
+    screen.classList.add("blank-dragging");
+  });
+  screen.addEventListener("pointermove", e=>{
+    if(!dragging) return;
+    const top = startTop - (e.clientY - startY);
+    if(useWindow) window.scrollTo(0, top);
+    else screen.scrollTop = top;
+  });
+  function stop(){
+    if(!dragging) return;
+    dragging = false;
+    screen.classList.remove("blank-dragging");
+  }
+  screen.addEventListener("pointerup", stop);
+  screen.addEventListener("pointercancel", stop);
 }
 
 /* 轮播式切尺寸：从当前档位往后找下一个该设备支持的档位，一圈找不到就原地不动 */
@@ -904,6 +944,7 @@ function openSheet(wrap, grid, card, d){
 
   const mask = wrap.querySelector(".sheet-mask");
   const sheet = wrap.querySelector(".sheet");
+  const screen = wrap.querySelector(".screen");
   const track = wrap.querySelector(".sheet-track");
   const inner = wrap.querySelector(".sheet-track-inner");
   const dots = wrap.querySelector(".sheet-dots");
@@ -962,6 +1003,9 @@ function openSheet(wrap, grid, card, d){
     confirmBtn.removeEventListener("click", onConfirm);
     carousel.destroy();
     if(wrap._sheetCarousel === carousel) wrap._sheetCarousel = null;
+    /* 解除面板打开时加的滚动锁，见下方 mask.classList.add("show") 旁的注释 */
+    screen.style.overflow = "";
+    document.body.style.overflow = "";
   }
   function onConfirm(){
     card.dataset.size = sizes[carousel.current()];
@@ -975,6 +1019,14 @@ function openSheet(wrap, grid, card, d){
 
   mask.classList.add("show");
   sheet.classList.add("show");
+  /* 面板打开期间锁死背后列表的滚动能力（2026-09-29 第二十三轮修复：之前面板出现后
+     拖动/滑动屏幕，蒙层下方的列表还是会跟着滚）。桌面端 .screen 自己是滚动容器
+     （见 .phone-head 旁的注释），锁它的 overflow 即可；移动端 .phone 是自适应高度，
+     真正滚动的是 document，所以同时也锁 document.body——两者只有一个在实际生效，
+     同时锁不会互相冲突。对应的解锁在 close() 里；render() 切换视图整个替换 DOM 时
+     也会顺带把 body 锁清掉，防止切视图时面板还开着导致锁泄漏 */
+  screen.style.overflow = "hidden";
+  document.body.style.overflow = "hidden";
 }
 
 /* ============================================================
@@ -1529,6 +1581,7 @@ function hintNear(anchor, msg){
 /* ---------- 视图切换 ---------- */
 const stage = document.getElementById("stage");
 function render(view){
+  document.body.style.overflow = ""; /* 防止切视图时方案 B 面板还开着，滚动锁没走 close() 就被残留 */
   stage.innerHTML = "";
   if(view === "C") stage.append(phone("A"), phone("B"));
   else stage.append(phone(view));
