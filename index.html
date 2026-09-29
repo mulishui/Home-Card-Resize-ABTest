@@ -61,21 +61,22 @@ body.dragging{user-select:none;cursor:grabbing}
 /* 胶囊形（2026-09-29 第二十轮，原来是 16px 圆角矩形）：border-radius 直接给一个
    远大于自身高度一半的值，不管内容撑高到多少都恒定是半圆两端，不用跟着内容高度
    手算圆角数值 */
+/* 2026-09-29 第二十四轮：改成自适应宽度、水平居中（不再撑满 left/right:12px 的
+   整行宽度），按钮之间固定 24px 间隔靠 flex gap 实现，不再依赖 space-around 把
+   间距摊到整条宽度上，所以 button 自己也不再需要横向 padding 来撑间距 */
 .batch-bar{
-  position:absolute;left:12px;right:12px;bottom:24px;z-index:5;
+  position:absolute;left:50%;bottom:24px;z-index:5;
   background:#fff;border-radius:999px;box-shadow:0 4px 16px rgba(20,22,30,.15);
-  display:flex;justify-content:space-around;padding:8px 4px;
-  transform:translateY(120%);opacity:0;transition:transform .25s ease,opacity .25s ease;
+  display:flex;gap:24px;padding:8px 20px;
+  transform:translate(-50%,120%);opacity:0;transition:transform .25s ease,opacity .25s ease;
   pointer-events:none;
 }
-.batch-bar.show{transform:translateY(0);opacity:1;pointer-events:auto}
+.batch-bar.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
 /* 图标（24px）+ 文案上下结构；文案 10px、颜色跟卡片房间名（.sub）同款浅灰，
    图标用更深的颜色跟文案拉开层次，是常见的"深色图标+浅色说明文字"底部菜单配色。
-   上下留白改成完全由 .batch-bar 自己的 8px padding 撑出（2026-09-29 第二十二轮，
-   原来是 bar 的 10px + button 自己的 6px 叠加成 16px，太高），button 自身不再
-   加纵向 padding，只保留横向 padding 撑开点击热区 */
+   上下留白由 .batch-bar 自己的 8px padding 撑出（2026-09-29 第二十二轮） */
 .batch-bar button{
-  background:none;border:0;padding:0 14px;
+  background:none;border:0;padding:0;
   display:flex;flex-direction:column;align-items:center;gap:4px;
   color:#1c1d21;
 }
@@ -511,6 +512,25 @@ body.dragging{user-select:none;cursor:grabbing}
      悬浮离底 24px，它是通栏面板，天然应该贴到底） */
   .sheet-mask{position:fixed}
   .sheet{position:fixed;left:0;right:0;bottom:0}
+  /* 2026-09-29 第二十四轮，同日两次修正：移动端 .phone 本身就是撑满 100vw
+     （见上面 .phone 规则），所以这里的视口坐标就等于"手机屏幕"坐标。
+     第一版想让 toast 不再挤成两行，直接用 left:16px;right:16px 把宽度焊死
+     撑满——结果文案很短时（比如占位 toast）也被强行拉成一整条通栏，用户反馈
+     "文案很少也撑满"是错的：应该是文案短就正常收缩，只有文案长到自然宽度会
+     超出屏幕左右各 16px 边距时，才封顶到这个宽度、转而换行，不该无条件撑满。
+     第二版直接把 left:16px;right:16px 换成 max-width，指望"width 默认 auto
+     按内容走、max-width 只在超限时兜底"——实测发现即使短文案也被裁窄成两行，
+     根因是基础规则用 left:var(--toast-left,...) + transform:translateX(-50%)
+     做居中：浏览器算 shrink-to-fit 宽度时，可用宽度是从这个 left 值算到视口
+     右边缘为止（并不知道后面还有个 translateX 会把它挪回视口中间），而这个
+     left 值本身就已经约等于视口中点，于是"可用宽度"被腰斩成半个视口宽，比
+     max-width 更早把内容挤到两行——即使 max-width 给的上限明明够宽。
+     换成 left:0;right:0（真正把整个视口宽度声明成可用空间）+ margin:0 auto
+     水平居中，width:max-content 让盒子先按内容自然宽度算，max-width 再在
+     真正超限时兜底收窄，两者互不干扰；因为改用 margin 居中，不再需要
+     transform 里的 translateX(-50%)，只保留控制滑入动效的 translateY */
+  .toast{left:0;right:0;margin:0 auto;width:max-content;max-width:calc(100vw - 32px);text-align:center;transform:translateY(16px)}
+  .toast.show{transform:translateY(0)}
 }
 </style>
 </head>
@@ -667,7 +687,7 @@ const DEVICES = [
   { icon:"bulb",    name:"Living Room Light", sub:"Living Room",     sizes:["1x0.5","1x1","2x1","2x2"], ctrl:"light", pct:65, lmode:"color" },
   { icon:"ac",      name:"Living Room AC",    sub:"Living Room",     sizes:["1x0.5","1x1","2x1"], ctrl:"stepper", val:"25°" },
   { icon:"tv",      name:"TV",                sub:"Living Room",     sizes:["1x0.5","1x1"] },
-  { icon:"curtain", name:"Curtains",          sub:"Living Room",     sizes:["1x0.5","1x1"] },
+  { icon:"camera",  name:"Kitten Monitor",    sub:"Entryway",        sizes:["1x1","2x2"], ctrl:"cam" },
   { icon:"robot",   name:"Robot Vacuum",      sub:"Living Room",     sizes:["1x1","2x2"], ctrl:"vacuum", battery:100, state:"Taking a break…",
     tasks:[
       {icon:"flag", label:"Clean Everywhere"},
@@ -679,7 +699,7 @@ const DEVICES = [
     ] },
   { icon:"hub",     name:"Smart Hub",         sub:"Master Bedroom",  sizes:["1x0.5","1x1","2x1"], ctrl:"hub", pct:62, state:"4.0GB Available",
     events:["pet","face","motion","car"] },
-  { icon:"camera",  name:"Front Door Camera", sub:"Entryway",        sizes:["1x1","2x2"], ctrl:"cam" },
+  { icon:"curtain", name:"Curtains",          sub:"Living Room",     sizes:["1x0.5","1x1"] },
   { icon:"purify",  name:"Air Purifier",      sub:"Master Bedroom",  sizes:["1x0.5","1x1"] },
   { icon:"humid",   name:"Humidifier",        sub:"Master Bedroom",  sizes:["1x0.5","1x1"] },
   { icon:"fan",     name:"Circulator Fan",    sub:"Study",           sizes:["1x0.5","1x1"] },
@@ -1580,11 +1600,18 @@ function hintNear(anchor, msg){
 
 /* ---------- 视图切换 ---------- */
 const stage = document.getElementById("stage");
+function equalizeBatchBar(bar){
+  const buttons = bar.querySelectorAll("button");
+  buttons.forEach(b => b.style.width = "");
+  const max = Math.max(...Array.from(buttons, b => b.offsetWidth));
+  buttons.forEach(b => b.style.width = max + "px");
+}
 function render(view){
   document.body.style.overflow = ""; /* 防止切视图时方案 B 面板还开着，滚动锁没走 close() 就被残留 */
   stage.innerHTML = "";
   if(view === "C") stage.append(phone("A"), phone("B"));
   else stage.append(phone(view));
+  stage.querySelectorAll(".batch-bar").forEach(equalizeBatchBar);
 }
 render("A");
 

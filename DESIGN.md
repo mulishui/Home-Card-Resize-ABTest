@@ -1101,6 +1101,96 @@ Playwright 实测（`verify_r26.js`）：①空白区域鼠标拖拽能让 `.scr
 （`regress.js`/`verify_r19.js`/`verify_r24.js`/`verify_r25.js`）以及额外补的
 点选/长按换位拖拽实测均确认无回归、控制台无报错。
 
+## 第二十四轮：悬浮批量操作菜单改自适应宽度 + 移动端 toast 改撑满宽度（2026-09-29）
+
+用户截图（移动端视图）发现两处问题：①悬浮批量操作菜单（分享/收藏/更换房间）原来
+是 `left:12px;right:12px` 撑满整行宽度、`justify-content:space-around` 把
+三个按钮均匀摊开，手机宽屏下按钮之间空隙显得很松散，用户要求改成自适应宽度、
+不撑满整行；②toast 提示文案原来是窄 pill（宽度跟内容走，`padding:11px 20px`
+包住文字），移动端稍长一点的文案就很容易被挤成两行，用户要求改成边到边撑满宽度
+（左右各留 16px 边距），只有这个宽度还装不下才换行。
+
+**悬浮菜单改自适应宽度**（`.batch-bar`/`.batch-bar button`）：不再靠
+`left:12px;right:12px` 撑满 + `space-around` 把间距摊到整条宽度上，改成
+`left:50%` + `transform:translate(-50%, ...)` 水平居中定位（自身宽度由内容
+撑开，不再显式撑满），`display:flex;gap:24px` 直接给按钮之间的间距一个固定值，
+这样不管有几个按钮、按钮内容多宽，间距永远精确 24px，不受容器宽度影响。因为
+间距已经完全由父级 `gap` 负责，按钮自己原来的横向 padding（`padding:0 14px`，
+本来是配合 `space-around` 用来在按钮内部再垫一层视觉间距）就多余了，改成
+`padding:0`。移动端媒体查询里原有的 `.batch-bar{position:fixed;bottom:24px}`
+覆盖规则只碰 `position`/`bottom`，不碰 `left`/`transform`，桌面端定义的居中
+方式在移动端会被完整继承，不用额外改。
+
+**toast 改移动端撑满宽度**：`.toast` 是 `position:fixed`，坐标相对浏览器
+视口，不是相对 `.phone`——桌面端 `.phone` 只是页面里一个 340px 宽的固定盒子，
+视口比它宽得多，如果全局让 toast 撑满视口宽度，桌面端会明显跑出手机模型的
+视觉边界，是错的；只有移动端断点下 `.phone{width:100vw}`，"视口宽度"才等于
+"手机屏幕宽度"，这时撑满视口才等价于撑满手机屏幕。所以改动只放进
+`@media (max-width:760px)` 块内，不碰桌面端基础规则：新增
+`.toast{left:16px;right:16px;transform:translateY(16px);text-align:center}`
+覆盖桌面端基础规则里的 `left:var(--toast-left,50%)`/
+`transform:translateX(-50%) translateY(16px)`（不再需要水平居中的锚点变量，
+直接用固定边距让宽度自动算出为 `100vw - 32px`），`.toast.show` 同步只保留
+`transform:translateY(0)`（丢掉不再需要的 `translateX(-50%)`）。垂直方向的
+`bottom:var(--toast-bottom,44px)`（第二十二轮定下的"贴在触发它的悬浮菜单
+正上方"锚点定位）完全不受影响，继续沿用桌面端基础规则里的值。
+
+Playwright 实测：移动端视口（390px 宽）下点开一张卡片触发 toast，
+`boundingBox` 测得宽度 358px（=390-32，左右各留 16px 边距精确生效）、单行
+高度 37px，未出现两行换行；桌面视口（900px 宽）下选中卡片弹出悬浮菜单，
+菜单整体宽度 177px（远小于手机模型 340px 宽度，确认不再撑满一整行）、水平
+中心点跟手机模型中心点完全重合（确认居中）、三个按钮之间间距分别精确测得
+24.00px/24.00px。回归测试（`regress.js`/`verify_r19.js`/`verify_r24.js`/
+`verify_r25.js`/`verify_r26.js`）全部通过，控制台无报错，确认悬浮菜单的
+显示/隐藏动画、toast 的锚点定位、`.phone:has(> .batch-bar.show) .grid
+{padding-bottom:...}` 这条依赖悬浮菜单实际渲染高度的兄弟选择器规则均未受
+影响（`verify_r25.js` 测得菜单总高度仍为 55px，跟改动前一致，因为高度只由
+上下 padding + 内容撑起，这轮只改了水平方向的宽度/间距逻辑）。
+
+## 第二十四轮追加：悬浮菜单三个按钮宽度不统一，改成以最长文案为准对齐（2026-09-29）
+
+用户反馈上面这版"自适应宽度+24px 间距"改完后，三个按钮（Share/Favorite/Move
+Room）各自按自己的文案宽度收窄，视觉上不整齐——"Move Room"文案最长撑得最宽，
+另外两个明显更窄，三个按钮大小不一，不像同一组菜单。要求统一成"以最宽的那个
+按钮为准，其余按钮跟它对齐"。
+
+纯 CSS 做不到"宽度等于兄弟节点里最大的那个"——CSS Grid/Flex 都只能让每个格子
+按自己的内容独立求值，或者反过来强行等分容器宽度（那样又会变回"整体撑满"、
+不是"以最宽内容定宽"），两者都不是这里要的效果；改成硬编码一个固定 px 值
+又会在文案变化、字体渲染差异（下面会看到桌面和移动端实测宽度本来就不一样）
+下逐渐跟实际内容脱节。因此新增 `equalizeBatchBar(bar)` 函数（`render()`
+函数上方），在每次 `render()` 生成完 phone 并 append 到 `document` 之后调用：
+清空按钮上次可能残留的 `style.width`，读各按钮撑满内容时的 `offsetWidth`
+求最大值，再把这个最大值写回所有按钮的 `style.width`。`offsetWidth` 必须在
+元素已经挂进 `document`、真正参与渲染布局之后读才有意义（`.batch-bar` 虽然
+未选中时 `opacity:0`，但不是 `display:none`，仍然占据正常布局空间，可以
+正确测量），所以调用点放在 `stage.append(...)` 之后，而不是 `phone()` 函数
+内部（那时 `wrap` 还只是内存里的游离 DOM，没有布局尺寸）。`.batch-bar
+button` 的 `display:flex;flex-direction:column;align-items:center` 本来就
+会把图标和文案在按钮内部水平居中，显式写死 `width` 只是约束按钮自身的盒子
+大小，不影响内部图标/文案仍然居中显示，不需要额外样式配合。并排对比模式下
+两台手机的 `.batch-bar` 是各自独立的 DOM 实例，`stage.querySelectorAll
+(".batch-bar").forEach(equalizeBatchBar)` 天然分别计算，互不干扰。
+
+Playwright 实测：桌面视口下三个按钮宽度全部精确等于 36px（等于原本最宽的
+"Move Room"按钮内容宽度）；移动端视口下三个按钮全部精确等于 44px——两个
+视口下的数值不同，推测是移动端断点触发了浏览器的文本自动放大（Chromium 的
+viewport-based text-size-adjust 类机制），但因为这套实现是"实时测量实际
+渲染宽度"而不是写死像素值，两种场景都能各自正确对齐，间接验证了"不能用
+固定 px"这个判断是对的。并排对比模式下两台手机的按钮分别独立测得三个
+36px，互不干扰。回归测试（`regress.js`/`verify_r25.js`）确认悬浮菜单纵向
+留白（8px/8px）、toast 定位、显示/隐藏动画均无回归，控制台无报错。
+
+## 第二十四轮再修正：toast 撑满宽度理解反了，应该是"内容超限才封顶"不是"无条件撑满"（2026-09-29）
+
+用户发截图指出上一版实现是错的："如果文案很长的情况，toast 才撑满最大宽度...而不是就算文案很少，也撑满"。之前 `left:16px;right:16px` 把宽度直接焊死成固定值，不管文案长短、"占位 toast: not yet implemented" 这种短文案也会被拉成一整条通栏，跟原本"内容多宽就多宽的窄 pill"观感完全不一致——这是对需求的误读，用户要的从始至终只是"加一个上限"，不是"改成撑满"。
+
+第一次尝试的修正是把 `left:16px;right:16px` 直接换成 `max-width:calc(100vw - 32px)`，逻辑上以为"width 默认 auto 会照抄内容宽度、max-width 只在超限时兜底"就够了，但实测发现即使很短的文案也被挤成两行。根因在基础规则的居中方式上：`left:var(--toast-left,50%)` + `transform:translateX(-50%)`——CSS 计算 shrink-to-fit（`width:auto`）的"可用宽度"时，是从这个 `left` 值一路量到容器右边缘为止，完全不知道后面还有个 `translateX` 会把盒子挪回视口中间；而这个 `left` 值本身已经约等于视口中点（因为移动端悬浮菜单锚点本来就居中），于是浏览器算出来的"可用宽度"直接被腰斩成半个视口宽，比 `max-width` 设的上限更早把内容挤到两行——`max-width` 根本没机会生效，卡在了更早的一层限制上。
+
+正确修法：把居中方式换成 `left:0;right:0`（老老实实把整个视口声明成可用空间）配合 `margin:0 auto`，`width:max-content` 让盒子先按内容自然宽度算，这时候 `max-width` 才能在真正超限时正常兜底收窄触发换行；因为居中已经交给 `margin:auto`，不再需要 `transform` 里的 `translateX(-50%)`，只保留控制滑入动效用的 `translateY`。**教训**：`position:fixed`/`absolute` 元素用"`left:百分比或变量` + `transform:translateX(-50%)`"做居中，在需要同时依赖浏览器 shrink-to-fit 自动测宽（`width:auto`/`max-content` 配合 `max-width`）的场景下有个隐藏坑——shrink-to-fit 的可用宽度计算只看 `left`/`right` 声明的边界，不管 `transform`，`left` 不是 `0` 时算出来的可用宽度会被腰斩；只要还需要"内容自适应宽度、居中显示"这个组合，都应该优先用 `left:0;right:0` + `margin:auto`，而不是 `left:X% + translateX(-50%)`。
+
+Playwright 实测：短文案"Batch Share: not yet implemented"单行显示，宽度按内容收缩到约 247.5px（远小于 358px 上限），水平居中（中心点精确落在视口中点 195px）；更长一点的"Batch Move Room: not yet implemented"同样单行，宽度约 283.9px，仍小于上限、未触发换行；人工构造一条明显超长的文案后，宽度精确封顶在 358px（=390-32，左右各留 16px），并正确换行到多行。桌面视口不在这条移动端媒体查询覆盖范围内，实测确认桌面 toast 行为（窄 pill、内容自适应宽度）完全未受影响。回归测试（`regress.js`/`verify_r19.js`/`verify_r24.js`/`verify_r25.js`/`verify_r26.js`）全部通过，控制台无报错。
+
 ## 当前进度（2026-09-24）
 
 方案 A 的**拖拽排序 + 改尺寸补位排布**这两套核心交互逻辑，已经过用户实测反复
