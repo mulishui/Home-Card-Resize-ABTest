@@ -58,16 +58,137 @@ body.dragging{user-select:none;cursor:grabbing}
 .edit-tip{
   font-size:11.5px;color:#9b9ea6;text-align:center;padding:0 18px 14px;line-height:1.5;
 }
+/* 胶囊形（2026-09-29 第二十轮，原来是 16px 圆角矩形）：border-radius 直接给一个
+   远大于自身高度一半的值，不管内容撑高到多少都恒定是半圆两端，不用跟着内容高度
+   手算圆角数值 */
 .batch-bar{
-  position:absolute;left:12px;right:12px;bottom:14px;z-index:5;
-  background:#fff;border-radius:16px;box-shadow:0 4px 16px rgba(20,22,30,.15);
-  display:flex;justify-content:space-around;padding:10px 4px;
+  position:absolute;left:12px;right:12px;bottom:24px;z-index:5;
+  background:#fff;border-radius:999px;box-shadow:0 4px 16px rgba(20,22,30,.15);
+  display:flex;justify-content:space-around;padding:8px 4px;
   transform:translateY(120%);opacity:0;transition:transform .25s ease,opacity .25s ease;
   pointer-events:none;
 }
 .batch-bar.show{transform:translateY(0);opacity:1;pointer-events:auto}
+/* 图标（24px）+ 文案上下结构；文案 10px、颜色跟卡片房间名（.sub）同款浅灰，
+   图标用更深的颜色跟文案拉开层次，是常见的"深色图标+浅色说明文字"底部菜单配色。
+   上下留白改成完全由 .batch-bar 自己的 8px padding 撑出（2026-09-29 第二十二轮，
+   原来是 bar 的 10px + button 自己的 6px 叠加成 16px，太高），button 自身不再
+   加纵向 padding，只保留横向 padding 撑开点击热区 */
 .batch-bar button{
-  background:none;border:0;font-size:13px;color:#1c1d21;padding:6px 10px;
+  background:none;border:0;padding:0 14px;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  color:#1c1d21;
+}
+.batch-bar button .bico{width:24px;height:24px;color:#1c1d21}
+.batch-bar button .bico svg{width:100%;height:100%;display:block}
+.batch-bar button .blabel{font-size:10px;color:#a8abb3}
+
+/* ========== 方案 B：点 ⤢ 弹出的尺寸选择底部面板 ========== */
+/* 遮罩/面板都限定在 .phone 内部（跟 .ghost/.batch-bar 同款写法），
+   靠 .phone 自带的 overflow:hidden 天然裁掉，不会盖住整个页面 */
+.sheet-mask{
+  position:absolute;inset:0;z-index:6;background:rgba(20,22,30,.4);
+  opacity:0;transition:opacity .25s ease;pointer-events:none;
+}
+.sheet-mask.show{opacity:1;pointer-events:auto}
+.sheet{
+  position:absolute;left:0;right:0;bottom:0;z-index:7;
+  background:#f5f6f8;border-radius:22px 22px 0 0;box-shadow:0 -8px 28px rgba(20,22,30,.18);
+  padding:18px 0 40px;
+  transform:translateY(100%);transition:transform .28s cubic-bezier(.2,.8,.2,1);
+  pointer-events:none;
+}
+.sheet.show{transform:translateY(0);pointer-events:auto}
+/* 关闭按钮和标题不共用一行（2026-09-29，用户截图标注纠正过）：改成纵向排列，
+   关闭按钮在上、靠右对齐（align-self:flex-end），标题在下，两者间固定 8px
+   （flex 的 gap） */
+.sheet-head{
+  display:flex;flex-direction:column;gap:8px;
+  padding:0 18px 4px;
+}
+.sheet-title{font-size:20px;font-weight:600;letter-spacing:.2px}
+/* 滑动提示语，跟提示语/尺寸文案统一成房间名文本同色 #a8abb3（2026-09-29 用户
+   截图标注）；标题到提示语紧凑的 4px（上面 .sheet-head 的 padding-bottom），
+   提示语到卡片保留原来记录过的 16px（头部区域到卡片的间距，现在这个 16 从
+   提示语的底部量起） */
+.sheet-hint{font-size:15px;color:#a8abb3;padding:0 18px 16px;line-height:1.4}
+.sheet-close{
+  background:none;border:0;color:#8a8d96;width:22px;height:22px;padding:0;flex:0 0 auto;
+  align-self:flex-end;
+}
+.sheet-close svg{width:100%;height:100%;display:block}
+.sheet-track{overflow:hidden;touch-action:pan-y}
+.sheet-track-inner{display:flex}
+/* 2026-09-29 第二十轮改了两版才定下来：第一版把视口高度做成"跟着当前这一屏卡片
+   实时变化"，被用户纠正——面板高度必须按这个设备支持的最大尺寸档位固定死，切换
+   到小档位时面板本身不能跟着变矮/变化。正确做法反而更简单，回到 flex 行容器的
+   默认机制：.sheet-track-inner 是 display:flex 的行容器，height:auto 时天然等于
+   全部 .slide 里最高的那一屏的自然高度（跟 align-items 无关，改都改不掉），這裡
+   直接利用这一点当"固定高度"——不用 JS 去量、也不用过渡动画，容器高度只由最高档
+   决定且不随左右滑动变化。矮档位的 .slide 被行容器的默认 align-items:stretch
+   拉伸到这个固定高度后，靠自己 justify-content:center 把卡片+尺寸文案这个内容块
+   在里面居中，比最高档矮多少，上下留白就多多少——这跟用户最初反馈"32 太大"的
+   32 是同一个数字来源，用户看过居中效果后明确选择保留这个居中方案（而不是让矮
+   档位也钳制成固定 16 边距），16px 只对"卡片本身占满整个固定高度"的最大档位成立 */
+.sheet-track-inner .slide{
+  flex:0 0 100%;padding:0 10px;min-width:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+}
+/* 当前档位文案，跟在卡片下面，固定 8px 间距（gap，上面已定义）；文案本身到圆点
+   指示器的 16px、圆点到确认按钮的 16px（2026-09-29 用户截图标注从 8 改成 16）、
+   按钮到面板底边的 40px 都不在这里，是 .sheet-dots/.sheet 自己的 padding，理由
+   见那两条规则旁的注释 */
+.slide-label{font-size:14px;font-weight:500;color:#a8abb3;flex:0 0 auto}
+/* 不计入轮播/圆点的隐藏参照 slide（用来把面板高度撑到 2x2 档），visibility:hidden
+   保留它在 flex 布局里的占位（撑高度）但完全不可见、不可点、无障碍树里也不存在 */
+.slide-ref{visibility:hidden}
+/* 面板只展示单张预览卡片，不需要真实列表那套"多张卡片共用网格轨道、靠
+   margin-bottom 让出行间距"的排布引擎——早先直接复用 CSS Grid + --unit
+   轨道高度（h*unit）反而引入了列表专属的"轨道比卡片本身多出一份 gap"的
+   假设，卡片再靠 margin-bottom 吃掉这份多余空间，视觉上把卡片顶死在轨道
+   顶部、留白全部堆在底部。改成普通 flex 容器 + 卡片显式宽高公式，让卡片
+   本身的盒子刚好等于目标尺寸，不再有轨道和卡片本身尺寸不一致的问题 */
+.sheet-grid{display:flex;justify-content:center;width:100%}
+/* 面板预览卡片的宽高改用独立于真实列表列数/行轨道的固定公式（2026-09-29
+   第十九轮）——宽度：L/M（占满整行，--pw=2）上限 368px，够宽时封顶，不够宽
+   （本 demo 手机内容区远小于 368）就用 .slide 自带的 24px 左右内边距撑到底、
+   跟着容器宽度走；S/D（--pw=1，半行宽）在"L 宽度"基础上折半再减一个 --gap
+   （跟 L 是否封顶无关，统一用实际算出来的 --l-w 反推）。高度：--ph 是"半个
+   d 档"的个数（s=0.5、d/m=1、l=2），代入"d 固定 120、其余尺寸以此为基准"
+   的公式——ph 份 --card-h 加上 (ph-1) 份 --gap，ph=0.5 时公式里的负 0.5 份
+   gap 正好等价于用户给的"s = 0.5 个 d - 10"这条口算式 */
+.sheet-grid .card{
+  --l-w:min(368px, 100%);
+  width:calc(var(--l-w) / 2 * var(--pw) - var(--gap) * (2 - var(--pw)));
+  height:calc(var(--ph) * var(--card-h) + (var(--ph) - 1) * var(--gap));
+}
+/* .plan-B .card 的 margin-bottom:var(--gap) 是给真实列表相邻卡片让间距用的，
+   面板只有一张卡片、且改用了上面的显式高度公式，这份 margin 留着的话会在
+   卡片下方多出一截空白、把"整体居中"的效果重新抵消掉——选择器故意写成
+   ".sheet-grid.plan-B .card"（三个类选择器）而不是简单覆盖，是为了在特异度
+   上稳赢 ".plan-B .card"（两个类选择器），不依赖两条规则谁的源码顺序更靠后 */
+.sheet-grid.plan-B .card{margin-bottom:0;min-height:0}
+.sheet-grid .card,.sheet-grid .card *{pointer-events:none}
+.sheet-grid .resize,.sheet-grid .card .check{display:none}
+/* .sheet-grid .resize 隐藏后面板里不再需要给尺寸按钮/勾选圆圈留白，s（1x0.5）
+   档预览卡片的文案原样继承了列表卡片专属的 margin-right（给按钮让位用的），
+   面板里没有按钮，不释放这份留白会让本来空间就紧张的 s 档设备名很容易被截断
+   成省略号（2026-09-29 用户反馈）；用 .sheet-grid.plan-B（两个类）比原规则
+   .plan-B .card[...] .txt（虽然选择器数量一样多，但用户样式统一约定"越靠后/
+   越具体的规则赢"这里选特异度更高的写法保险）稳赢 */
+.sheet-grid.plan-B .card[data-size="1x0.5"] .txt{margin-right:0}
+/* padding-top:16 是"当前档位文案到圆点"的间距，padding-bottom:16 是"圆点到确认
+   按钮"的间距（2026-09-29 用户截图标注从 8 改成 16，跟 .sheet 的
+   padding-bottom:40 一起都是截图标注的固定值） */
+.sheet-dots{display:flex;justify-content:center;gap:6px;padding:16px 0 16px}
+.sheet-dots .dot{width:6px;height:6px;border-radius:50%;background:#dfe2e8;transition:background .2s}
+.sheet-dots .dot.active{background:#1c1d21}
+/* 胶囊形（2026-09-29，跟 .batch-bar 同款写法）：border-radius 直接给一个远大于
+   自身高度一半的值，不用跟着按钮高度手算圆角数值 */
+.sheet-confirm{
+  display:block;width:calc(100% - 36px);margin:0 18px;padding:13px;
+  background:#1c1d21;color:#fff;border:0;border-radius:999px;
+  font-size:15px;font-weight:600;
 }
 
 /* 页面滚动区 */
@@ -80,6 +201,11 @@ body.dragging{user-select:none;cursor:grabbing}
   grid-template-columns:repeat(var(--cols),1fr);
   gap:var(--gap);
 }
+/* 选中卡片后浮起的 .batch-bar 会盖住列表底部：多选模式下把网格底部内边距
+   加大到"实测浮层高度 + 32px"，滚到底也不会被浮层挡住最后一张卡片；
+   2026-09-29 第二十轮把按钮改成图标+文案上下结构后浮层变高（47px → 71px），
+   这里跟着从 79px 改成 103px */
+.phone:has(> .batch-bar.show) .grid{padding-bottom:103px}
 .card{
   background:#fff;border-radius:var(--radius);padding:var(--pad);
   min-height:var(--card-h);min-width:0;display:flex;flex-direction:column;justify-content:space-between;
@@ -99,26 +225,77 @@ body.dragging{user-select:none;cursor:grabbing}
   font-size:var(--fs-sub);color:#a8abb3;margin-top:2px;margin-right:calc(var(--btn) + 6px);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
+.card .sub-batt{display:inline-flex;align-items:center;gap:3px;margin-left:6px;color:rgba(0,0,0,.7)}
+.card .sub-batt svg{width:13px;height:13px;flex:0 0 auto}
 .card .txt{margin-top:var(--txt-mt)}
 /* row2 默认对布局零影响，.txt 表现得跟直接挂在 .card 下完全一样；
    .ctrl 只在 2x1/2x2 档位下才会显示（见下面 .plan-A 的尺寸规则） */
 .card .row2{display:contents}
 .card .ctrl{display:none}
-.card .ctrl .val{font-size:11.5px;color:#a8abb3;white-space:nowrap}
-.card .ctrl .switch{width:34px;height:20px;border-radius:10px;background:#e4e6ea;position:relative;flex:0 0 auto}
-.card .ctrl .switch.on{background:#34c759}
-.card .ctrl .switch i{
-  position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
-  background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left .15s;
-}
-.card .ctrl .switch.on i{left:16px}
-.card .ctrl .bar{width:56px;height:6px;border-radius:3px;background:#e4e6ea;overflow:hidden;flex:0 0 auto}
-.card .ctrl .bar i{display:block;height:100%;background:#8e9198;border-radius:3px}
 .card .ctrl .step{
   flex:1 1 0;height:40px;border-radius:20px;background:#e4e6ea;color:#8e9198;
   font-size:17px;font-weight:600;display:flex;align-items:center;justify-content:center;
 }
-.card .ctrl .stepval{font-size:24px;font-weight:700;color:#1c1d21;flex:0 0 auto;white-space:nowrap}
+.card .ctrl .stepval{font-size:24px;font-weight:700;color:#1c1d21;flex:0 0 auto;white-space:nowrap;display:inline-flex;align-items:center;gap:3px}
+.card .ctrl .stepval svg{width:0.72em;height:0.72em;flex:0 0 auto}
+/* barlabel：亮度条/存储用量条共用，条形本身固定 40 高，数值/文案直接摆在条内部
+   居中，而不是像 .bar+.val 那样另起一个元素挤在旁边 */
+.card .ctrl .barlabel{
+  position:relative;flex:1 1 auto;width:100%;min-width:0;height:40px;border-radius:20px;
+  background:#e4e6ea;overflow:hidden;
+}
+.card .ctrl .barlabel .fill{position:absolute;left:0;top:0;bottom:0;background:#c7cad1}
+.card .ctrl .barlabel .label{
+  position:relative;z-index:1;height:100%;display:flex;align-items:center;justify-content:flex-start;gap:8px;
+  font-size:13px;font-weight:400;color:rgba(0,0,0,.7);white-space:nowrap;padding:0 16px;
+}
+.card .ctrl .barlabel .label svg{width:18px;height:18px;flex:0 0 auto}
+/* 门锁 2x1：两行紧凑信息，图标+文字左对齐，字号先定 12px（2x1 控件行预算只有 60px，
+   两行需要压缩着放），实测有富余再跟 barlabel 的 13px 对齐 */
+.card .ctrl .lockinfo{display:flex;flex-direction:column;gap:6px;width:100%;min-width:0}
+.card .ctrl .lockrow{
+  display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(0,0,0,.7);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.card .ctrl .lockrow svg{width:14px;height:14px;flex:0 0 auto;color:#a8abb3}
+.card .ctrl .lockdiv{width:1px;height:12px;background:#d8dade;flex:0 0 auto;margin:0 2px}
+/* 扫地机 2x2：状态摘要 + 2x3 任务网格，网格行用 1fr 自动吃满 .ctrl 剩余高度，
+   不用手动算按钮像素高度 */
+.card .ctrl .vacuumpanel{display:flex;flex-direction:column;gap:10px;width:100%;height:100%;min-height:0}
+.card .ctrl .vstatus{display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(0,0,0,.7);flex:0 0 auto}
+.card .ctrl .vstatus svg{width:16px;height:16px;flex:0 0 auto;color:#a8abb3}
+.card .ctrl .vtasks{flex:1 1 auto;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:8px;min-height:0}
+.card .ctrl .vtask{
+  display:flex;align-items:center;gap:8px;background:#eef0f3;border-radius:14px;padding:0 12px;
+  font-size:12.5px;color:#1c1d21;min-width:0;
+}
+.card .ctrl .vtask svg{width:16px;height:16px;flex:0 0 auto;color:#1c1d21}
+.card .ctrl .vtask span{
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  text-overflow:ellipsis;line-height:1.25;
+}
+/* Smart Hub 事件图标像参考截图里的头像堆叠一样互相轻微重叠（负 margin-left），
+   每个图标带一圈跟卡片同色的描边，把重叠的边界"切"出一条缝，视觉上才不会糊成一片；
+   最右边跟 .check 勾选圆圈的重叠也是同一个效果——不再刻意留白躲开，直接贴着走，
+   勾选圆圈自身的白色/蓝色底能盖住下面图标的一角，跟头像堆叠 + 右下角勾选是同一套语言 */
+.card .ctrl .events{display:flex;flex:0 0 auto}
+.card .ctrl .event{
+  width:40px;height:40px;border-radius:50%;flex:0 0 auto;background:#eef0f3;color:#8e9198;
+  display:flex;align-items:center;justify-content:center;border:2px solid #fff;
+}
+.card .ctrl .event:not(:first-child){margin-left:-14px}
+.card .ctrl .event svg{width:60%;height:60%}
+/* lmode/lspectrum 只在灯类设备的 2x2 档位下才显示（见下方 [data-size="2x2"] 的
+   :has(.lspectrum) 覆盖），2x1 档只露出亮度条，默认先隐藏 */
+.card .ctrl .lmode{display:none;flex:0 0 auto;width:100%;height:32px;background:#eef0f3;border-radius:10px;padding:2px;gap:2px}
+.card .ctrl .lmode-opt{flex:1 1 0;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:11px;font-weight:600;color:#8e9198}
+.card .ctrl .lmode-opt.active{background:#fff;color:#1c1d21;box-shadow:0 1px 3px rgba(20,22,30,.12)}
+.card .ctrl .lspectrum{
+  display:none;border-radius:10px;
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,.9), rgba(255,255,255,0) 45%),
+    linear-gradient(to right, #ff3b30, #ffcc00, #34c759, #0a84ff, #af52de, #ff3b30);
+}
 .card .check{
   position:absolute;right:10px;bottom:10px;width:var(--btn);height:var(--btn);border-radius:50%;
   border:1.5px solid #c7cad1;background:#fff;display:flex;align-items:center;justify-content:center;
@@ -149,7 +326,8 @@ body.dragging{user-select:none;cursor:grabbing}
 }
 /* 孤立（未配对）的 1×0.5 卡片下方留白的半格槽位：不可见，但要能接住拖拽悬停/落点判定，
    否则拖到那片空白上会因为没有任何 DOM 元素而判定失败 */
-.plan-A .card[data-size="1x0.5"] > .blank-hit{
+.plan-A .card[data-size="1x0.5"] > .blank-hit,
+.plan-B .card[data-size="1x0.5"] > .blank-hit{
   position:absolute;left:0;right:0;top:calc(100% + var(--gap));height:var(--unit);
 }
 
@@ -182,50 +360,119 @@ body.dragging{user-select:none;cursor:grabbing}
   top:50%;bottom:auto;right:calc(var(--pad) + var(--btn) + 6px);
   transform:translateY(-50%);
 }
-/* 2x1：只多了横向空间，卡片高度不变。图标 + 设备名/房间 + 尺寸按钮合并成一行
-   （靠横向多出来的空间一次性放下），状态控件独占下一行、撑满宽度。
-   用 display:contents 把 .row1/.row2 拆开，让图标/文字/按钮/控件都变成 .card
-   自己的直接 flex 子项，再用 order 重新排布成两行——控件用 flex-basis:100% 强制
-   自己单独换行，是常见的"flex 换行占满整行"写法 */
-.plan-A .card[data-size="2x1"]{
-  flex-direction:row;flex-wrap:wrap;align-items:center;column-gap:10px;row-gap:10px;
+/* 2x1/2x2 共用同一套两行网格布局：图标 + 设备名/房间 + 尺寸按钮一行，
+   状态控件独占下一行。改用 CSS Grid（而不是 flex-wrap + row-gap）是因为
+   多行 flex 的 gap 在"某一行内容比预期更高"时会跟 align-content 的隐式
+   stretch 相互影响，曾经导致行间距被吃掉、看起来像贴在一起。
+   用 display:contents 把 .row1/.row2 拆开，让图标/文字/按钮/控件都变成
+   .card 自己的网格项，再用 grid-row/grid-column 摆到两行。
+   align-content:space-between 让两行分别贴齐卡片的上/下内边距（顶部紧跟
+   padding、底部到卡片边缘固定还是 padding 那 10px，不会多出一截空白），
+   卡片固定高度和内容实际高度之间的差值全部转成中间这一条间距，自适应
+   撑开——这是 2x1 卡片高度不随控件类型变化、但不同控件本身高度不一致时
+   唯一能保证"上贴顶、下贴底"的写法；2x2 有独立的 1fr 行吃掉剩余高度，
+   这里不会有多余空间可分配，align-content 对它是无效果的 */
+:is(.plan-A, .plan-B) .card[data-size="2x1"],
+:is(.plan-A, .plan-B) .card[data-size="2x2"]{
+  display:grid;grid-template-columns:auto 1fr auto;align-content:space-between;
+  column-gap:10px;row-gap:12px;
 }
-.plan-A .card[data-size="2x1"] .row1{display:contents}
-.plan-A .card[data-size="2x1"] .row2{display:contents}
-.plan-A .card[data-size="2x1"] .ico{order:1}
-.plan-A .card[data-size="2x1"] .txt{order:2;margin-top:0;flex:1 1 auto;min-width:0}
-.plan-A .card[data-size="2x1"] .resize{order:3}
-.plan-A .card[data-size="2x1"] .ctrl{
-  order:4;flex:1 1 100%;display:flex;align-items:center;justify-content:center;gap:8px;
+:is(.plan-A, .plan-B) .card[data-size="2x1"] .row1,
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .row1,
+:is(.plan-A, .plan-B) .card[data-size="2x1"] .row2,
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .row2{display:contents}
+:is(.plan-A, .plan-B) .card[data-size="2x1"] .ico,
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .ico{grid-row:1;grid-column:1;align-self:start}
+:is(.plan-A, .plan-B) .card[data-size="2x1"] .txt,
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .txt{grid-row:1;grid-column:2;margin-top:0;min-width:0;align-self:start}
+:is(.plan-A, .plan-B) .card[data-size="2x1"] .resize,
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .resize{grid-row:1;grid-column:3;align-self:start}
+:is(.plan-A, .plan-B) .card[data-size="2x1"] .ctrl{
+  grid-row:2;grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:8px;
 }
-/* 步进器（目前只有空调）单独定高、按钮/数值间距更大，跟开关/进度条这类
-   高度更小的控件区分开——用 :has(.step) 只命中含步进器的 .ctrl，不影响
-   同一档位下其他设备的控件行 */
-.plan-A .card[data-size="2x1"] .ctrl:has(.step){height:32px;gap:16px}
-/* 2x2：横向+纵向空间都翻倍，状态控件放大一档、推到卡片底部 */
-.plan-A .card[data-size="2x2"] .row2{display:flex;flex-direction:column;flex:1}
-.plan-A .card[data-size="2x2"] .ctrl{
-  display:flex;align-items:center;gap:10px;margin-top:auto;padding-top:14px;
+/* 步进器（目前只有空调）按钮/数值间距更大，跟开关/进度条这类控件区分开——
+   用 :has(.step) 只命中含步进器的 .ctrl，不影响同一档位下其他设备的控件行。
+   之前这里还写死过 height:32px，但 .step 按钮本身早已改成 40px 高
+   （"按钮改成40高"那次改动漏改了这一处），40px 的按钮被强行塞进 32px 的
+   容器、垂直居中溢出，多出的部分会顶穿网格算出来的行高，就是"卡片底部
+   凑不够 10px"的根因——容器不再定死高度，交给 flex 按 .step 实际的
+   40px 自然撑开就不会有这个偏差 */
+:is(.plan-A, .plan-B) .card[data-size="2x1"] .ctrl:has(.step){gap:16px}
+/* Smart Hub 只到 2x1 档（无 2x2），存储条+事件图标改成同一行左右并排，不再上下堆叠：
+   2x1 卡片内容区高度固定只有 100px，头部行占 40px，控件行最多只有 60px 预算，而
+   "40px 存储条 + 10px 间距 + 事件图标另起一行"需要 78px+，装不下，会撑破卡片底部
+   （见 DESIGN.md 对应章节）。改成同一行后总高度就是条形本身的 40px，稳稳落在预算内，
+   条形图/事件图标的样式都写在上面 base 规则里，不分档位 */
+:is(.plan-A, .plan-B) .card[data-size="2x1"] .ctrl:has(.events){gap:10px}
+/* 2x2：横向+纵向空间都翻倍，状态控件放大一档；网格第二行设为 1fr 吃掉
+   卡片剩余高度，.ctrl 默认拉伸铺满这一行，靠 align-items:flex-end 让内容
+   贴在这行的底部，视觉效果等同"推到卡片底部" */
+:is(.plan-A, .plan-B) .card[data-size="2x2"]{grid-template-rows:auto 1fr}
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .ctrl{
+  grid-row:2;grid-column:1/-1;display:flex;align-items:flex-end;gap:10px;
 }
-.plan-A .card[data-size="2x2"] .ctrl .val{font-size:13px}
-.plan-A .card[data-size="2x2"] .ctrl .switch{width:44px;height:26px}
-.plan-A .card[data-size="2x2"] .ctrl .switch i{width:22px;height:22px}
-.plan-A .card[data-size="2x2"] .ctrl .switch.on i{left:20px}
-.plan-A .card[data-size="2x2"] .ctrl .bar{flex:1 1 0;width:auto;min-width:0;height:8px}
-/* ---- 方案 B：小卡片（3 列） ---- */
+/* 摄像头 2x2：不显示开关/进度条这类状态控件，改成一块填满剩余高度的监控画面预览，
+   贴合参考截图里"标题行下方是一整块画面预览"的布局——.ctrl 本身已经靠
+   grid 的 1fr 行铺满剩余高度，这里只需让它纵向拉伸（而不是贴底）就够了。
+   图片是用户提供的真实照片压缩后转成 base64 内嵌（单文件、无外部依赖的约定不变，
+   只是这一处从纯 CSS 渐变换成了真实图片）；background-size:cover 等比缩放铺满、
+   多余部分居中裁掉，不会被拉伸变形 */
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .ctrl:has(.cam){align-items:stretch}
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .ctrl .cam{
+  flex:1;border-radius:12px;background:#aeb6c2 url("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAB4KADAAQAAAABAAABDgAAAAD/wAARCAEOAeADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9sAQwADAwMDAwMFAwMFBwUFBQcJBwcHBwkMCQkJCQkMDgwMDAwMDA4ODg4ODg4OERERERERFBQUFBQWFhYWFhYWFhYW/9sAQwEDBAQGBQYKBQUKFxANEBcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcX/90ABAAe/9oADAMBAAIRAxEAPwD5bj0h1jLBTgiqr6e69uRX00ngppEEcYV+2BwfyNYOq+BZ7cbniK/hivXlh3A+U+sRex8/G1O3AWs6WFouor3C38OpCXaRcs3yr7eprznX9OFtdyRqOBXDNWfKbxld2OIJYd+vaqDwQhi3Kk/xLx+lbMtsQSTxWZKu0nisHfc6umpkvbsp3oMn1X5W/wAK1tO8W69pGI4ZvMQf8s5BVGRifoKqSZJw4DDtmov0Gofyns/h34zXmnTBWke1buOqH6g19A+H/jfpl6ix6qq4P/LWHkfiOor4ImhUD5eM9m5Favg/Tb/UvEljplozoZ5lU7eRtzz+lUo8zSizfma+LU+9NajtvE2s2t1bOTDbhZMjo+/oOe9Qie5u/G81u0YMNtFGobPRiMnj1xXY2Gmxae8UZTbwXPH90YA/CsYwGG4vJoR+92nJ9ZZOB/3ytcclyu3r956kH7tizpviFgl9fRncsd0YI1HRtgAP65rvLHXLO7JTdtcHBB9cZxXmdppEVhpdjpSrvbLSuT3bO4sfqa0m0+SzCvCTIQoL87T8/U59atPl6icU9T1ZW3DK0NyOleT6T4l1FtUlsrPbJDFhdshIOB3B/wAa9Fi1S3YrHMRHI38JPX6VvGakrmDpuLsX25pArOBGBnc3Sg4I4NMv9TTRrMOmGu5R+7H90H+I/wBKJz5Y3YRV9ButasdHgNhYkC7kGXcf8sx6D3NR6V4mN+q6bqce6SRgiyKO5PGR/UVwDSSTO0kjFmY5JPUk10HhmMPrlvIeRbh52+kak/zrzKjcYSqvfVnbDVqKRlfEBzYeIIRdXCOt4WFsu7J2pjK47YzWco429K86vZ9U/wCEztL9rY3tzJNHJKwI228e8kJg9Bjk+pr6Ul0jR/Ea+dZ4tLs9V/hY1NGCiuRdDWo29WeYnAHOc1WZm7V0Gt6DqmiyCK+hKBvuv1U/Q1zMjhBXS4tPUzut0DSKgyOp4qFUaVs0sMTTNk8Vt29ozkIoJz6Voo3Jk2QW8B44612mk6CZB9pucIijcd3AAHck9BSCDSvD2mya74hnjtbWBdzySHAHsO5Y9gOTXyN8UvjVqXjTfofh7zNP0MfKwztmuQO8mPuoey/nXSvd9TC56V8S/jrFZiXw18PZFMgzHPqIGVXsVg9T/t9PT1r5ZRsu0rku7ks7scszHqSe5qgmAu0cAdAKlUkVtFPdkPY3baQFsV0lnMink1xsLBSTmtmKVR3raPoRtuejafeKCvJ9DmukmnSWyliY5DLg/jXmFrebAN3Oa6Bb9jauvcjA54raL0szO7WqPO/EHg+5hSS8sZ42tNof5uGGeox3OfSvOIprzTATHIwLMGIU8ZHT8fevedS0+X+wpzqMiQK64RXOHZuw29efWvCtUiu7cmC4haMr2Iwa+dxEYqT5T9PoQxToReMi0+l1a67nu+m3Wq/EP4eXSzzLLqOnyrErOcyzIRlVJPUjkZ9hXJaL4X0/ybq48ZXMlg1mAILZFzNPJnuTwiDuep7CuV8MeLtV8Ixj7AiDLiSQSru3kdAR2FXNW8TXOu6nNrN8jL9sYunHHBwQuOODxXHUqcuyPpMNNV6fssQ+lkd5HcRoV2jkn+L0rqbPxJLbW3MpCRchfUkYwfauFuNL1OGO0a48sSXMImWMOrMqt03AHg45weR3p9hoeqapepp4kRPNyAWYYyB3rPkaeh/KOMoYjLsRLDpuM9vMp33i+6nmfnljnI55qrb+IrxCHCBwTgsf5YrGmsHtLu7tZGVjC5UsvIyOuDVA+YI2RGwR8wx3xSVC251ZFQw8cZT+sU7rbXv0/E+kfh/8QLSKxms7pwlyCSgPGR/9auL1jxR51zPfXMpj8xjwSfz/AP1V4Vda2RhIlKyAkMR3P9KoNdXd06+fITz3OTWibguU/ovC0MPGPNGOv3n1P8LZoda1SKW4YyQQyAJH/FKR/T1r7G8RWMOp6S0N0NiqBJzzgryBXzx+z14P06ytk8Tvf/aLqWJ40gUDZEGI3ZPXfx7V9B+Krh4dKZIjiSVgg9geSfwFethFyQc0fFZx7OeJ9lHRLds8nu5ES6EkX3SMj8Kxta1S88ryNLi+0XbqWGTwqjqx5/IVtajAWt1Kf8s/5d68c8T3uvJdiHRrfzjcJ5YdQcxnkEjtyrEZNd9LmduY+BqRi5txen9WNDS9YGteZf3Nw0DWq4kiyBER/eOaw1dpb+41KOOHDDCTwtuLKP7w6Zro/C/gddNs5H1RxcTXCYkjxlADzj3raube106Fba0hSKNeioAAK+Mx2RVKladShKyf9fmfQ4fNKUIKFRao4zw5d3V1HLcSXAnQuQv7soV9iDXcwlvMVtwxWKYp2QTBCEPcdxWhBnAJ4rooZG/aKtWm209F09Dnr5inGUKcFZl67jDW8gUZJU4rwjxdv1GzhhVHNxC5w7nJyx4Vf9kdAK91WQudpPFRXVhbSYkaJS4O4HHevcrUJ1GnGVrEZdmFLDRnGtC99vJnmngjwfJc6XFYXq4ZmMkp9Oc4r1XX/E0egi3ghGY0Kh8dkHH6Vp2lt/ZloWOFZgCT7nmvFvF14J5JPMbA6c10qlyx1PGlVdSpzH0bqE66l4fWeP5jGQ31U1l6fem2XzI/vOCB7Zrivhd4hXVvDrWdw257fdbyfRR8p/EVQ8UeLLbwzpxum+eU5WJPU17GU1XKk4y6Hj51TcZxlHdm5rUsNuTJKyqD6muIuvEmmRHPmByvQLXi8viDVfEV2bm+mYgnhRwAKq3dyQfKgJ68mvWddt2ieD9X099n/9DyPwn+0xpUbJD4l02SEZwXhIlUf8AfB/I19EaV8VPhx4pgWHT9Rh8xh/qnbynHtslwD+Br8tIkZkMr5OavabZT6hfQ2dvwZWC59M969FYio9L3PClg6a2VmfpRrGn6a582AIc8jHyf/WNeH+JPD8jSvNGwO49G4/XpXmI8N/EzwvYPqWhX0k1lGCxG7IwOp8tsgj6V6LHqmoWvh+11DX3AnmUM+xSAN3IyoyOnXitbcycpqx5FZSpNezlc8z1CxurYnzUZfcjj8+lc5OFB/wA816vLqVreITA6OpH8J4/EcgfpXK31hZzHIXbnuOP06Vzzo3Xujp49LSqjzydCgypqi/XB6iuou9JmUEREMvXB4Nc1NA8bYkBB9+K5Jwcdz1aVeFRLkZSevWvgvpkl74ma8icxNBGVjcDO2R++O+FBNeTy8HjmvrX4C6GLXw5PrsqfPM5Ef/oAP86mOnMz0Y62R6zY6t4ijmlg1UrcRRsTb3DY3GJeW34468CtW31CwQR/a54xNeOZFUdCSen5dKv6lZIlvFZL96bCH/d6mq8ejWz3RKoP9HAKk/wt2x9OK43HXRnpJK1zRcWpLywSJK2Ng2kHaAOhx0OTRcRLKpjzgPIqZHcIMkVyosp9IvZbrRyqI6l5UIyHZSAn4s2a008Q2MQW01YSQ3SLJk7CUaVhk4I6ADrWUpWWpSV3ZEvh22gihlu41HmSOxJPfmpIYnur2WOVBJHGDljzgnmrHhtM6XGxxjBY1LokjNb3Ny3PmOx/PpVvdIdhba6msXd4WZ4wPmD+3oavy6cdYf7XZv5m/oG/oapanC0OjyufvsBk/U4ruvDlmttYwoB/COa1ppz36GVS0NjzmazuLN/LuEKH3H8qr6bq19pjeI9YQhbbTtJYK2fm+0SMMHPsCK92ntLKe3b7citGASc9gBnOa8+uPAwufBGrwxEn+1oQzITjYC24c+ygVnjcO3RkodbfmXh6yVRNrY+Rrzxj4iGt3GoqwkkfZvDHO524BJ9hX094QW/8Qapa265jQ7XlI7AckV81W+gPpurwx29u4EjpGRccsMMASMHBBHSvur4caENPsmvZFxJNwPZRTwtJXtuaV6s3BOSszt9ajt57L7NcRrIhHIYZ6V8satp0SalKkGfLDEAHmvpfxLcC2tGkJ6A4rweGxm1C6JQdTkn612Vld2OGk2ZllYPM6xRjmtPxD4i8N/DfSRqevSbppAfIt0IMszDso7D1Y8CsTxd4+0vwRE2laOiX2tFf9Xn93Dno0rDp7L1NfGfiS517V9Um1bxFM9xdSnmRvugf3UHRVHYCpjG2iNG7vUtePviH4h+IWoC41ZvKtISfs9nGT5UQ9T/ec92P4cVweM9attEeeKbs68VqlYTsyEDjnrU6nIzTAoAGaeFHPpVLuQ30LKEBauwSqME1nAip0IzkVfN2Fa5txzgc56V2/hgQ7ZNXv9otrboG/ibt+A6mvNFfHTmukvLuMeHbKytn3SyTFpEHQLkdffiscRWcYOSPp+HYYWOM+sY74Kacrd2rWX39DzzWdZ1DxH4ge3mZpTPOAFU44zgAenFej+MYUutOtY9HYTxWMapceX85QLxlj6D1rz3WdFSC/OrWB2qrbmQc4PqPatrwN4h/4Ra/vNf+0I0IiaD7O+d0wmBB7YAXqSfavBjVU1pt1PZweYKtiamIldynflu9NXdr7/wOFv7lWOxOB/OvTdP8VeFbPwMPDEsBm1BSZEmkQbFd2BOw5yCBx2zWT4v8SaP4qv4tRsNNttNSKEKyQKF3SZ5Y+p9K4eCxn1bUoLSwjMjs46dgDyT6AUnFP3YntTk1y15KzWp0txqEihblZPnUDBHQe1WV1+4MK5yjsPy961/EmjaRb3zDSlZogRgE5AYdcevNUrXw5qF1ay6jJCVtYeGdvlBY9FBPU+wq4Ydn5ZxfmGEzKvH2cLzj17+Ry80cznzEYnzD1z1qXZd2YVyd3OfWt5LElV+Xaq9KkaBZIzE/fofetNnqcGByKTpOrPSW68ji5tNe6Z7qFvnLElTx1rd8L6Nc3uqQQOm1TKqMxGSNxxx71padbBzIDgMOPrivo34JWvhlZpb7WLZZLm2dWhds4Q8846EjsT0qlFSep+g0sVUhhY10t1+Ja1mGb4PeObK60OCRtLu4BJNbgk5Efyuw/wBoA5z/AEr2nxD4k028W3uIplEDqDGznaGLgEdcc+1cj8TNV0jUtQ0rUre5UNpxmLEjKukq7dvvnvXyf8VvFcOsxJbwzHEJyozjOPYelerGFpXjsz5DMcR9ZhBfa6v8j6uvrwyoY4uASVJ/D9a5zTkeISyE53PtFeSfB34gTa55XhjVpt92P9RJIcmQAfcJP8QHQ9x719E3ujwWEaRBgWHzOw6Fj6V2ynCUFbdHw9OlWjUlGoc5pmtWd9d3VnExL2jBX9Mn0+lN1dEaLea8z0vUDo+sX1tFC891e3eEXphSfvH869T1wJb2LyHoi/hk1jOahFyvp3O76tOdWNGMfebtY419bjtIWjDbE6Zam2Opwz8LKpHbmvK9Y0+81Nrq4haZvsr7WEi7VYH+KMgkFao6fHcLEkxJVVyGUDcT+PWvncRmLovSJ9pheHfrEE/a/ge8xT2wbBlXjnqK04pPM6fOD0xzXhd5dpYqJpHG1hhV28g+ua6fwDqaxXN1qerzCG1iIjTJ4LN7ewqMLmkq01Dk3IzThuOEoyrKrdrpb/gnrGu3i29gTKcHbnmvl/XdQbUzLInARiMe1ew+MvEFtLPFaW7iRJULBgePavDJUZZJ4c8EZ49q9fE1bq0Txcsw6i+eas01809De+G+vvoniVrVmxDfIuR/tCpvikJxqcIkOY0BA9M15hdXUlnc212nWEhh+Br2Dxkyaz4Yg1aPllUMSPy61tltXlq8r+0vxOPOKH7pTS+E8u0+cRkopwSDir8as67sZzXHIzE7s8+tdjozNPGYpD8wr6FSadz41x0P/9H868FYVj6GvU/hRoK6trnBG8EIi+pbqfwGTXl7naHlbvX2N+zf4WibS5vFEi52v5SZ7u3U/gOPxr0qEU5+90PGr1HGDkez3mjw2VnHaLgxxqM57hf8TXkWu2v22SVzwkQIH+8ev6V6f4w1eK1SZM/dJz9E/wDr141c6oBY7HPzyfMfqadSpe8u5883yyt2PKtT01UlaSLKuD95DtP6Vz76hqNtkOwmX/a4b8x/UV0+oXYywHJ71zEziUnC5FcEarR6CjCpG00PTW7ZvklzEfRun59KczxTLnh0P0INYVxbxyZJ4rLEdxbktAxTnt0P4Vr7fm+JGUsBF60nY259MjnYC3+RmOAO2TX374Z0dPD/AIW0rSQAGVI9+O7Y5z+NfDvw6hute8Z6ZpUyBhJMGJHonzHI/Cv0EciXVFX+C2j3n69BU1XFQVuv6Hq4GFWLaq9B24T38szHIgXav16k1JE3laZNMfvytxn1P/66z4zmF+fvvg++eW/StDUGKx29t0Kr5jAep6D8zXm9D3fIzFRQyAjhSZG/3YhhfzauW8RWd1dSxafbuEkZSzMRnBbk4rs7eISzFR91nWIf7kXLH8TWNaML3W7qcDIQ7FqJxvZM1hpqWYb+40DR0SdkcsBHynY/TmtXw8sNzpsbW0iyI3PyHJ+hHUGsDxCjXOoQacn8IBI96vrpkewR7TH5Y5ZPlJ/EVEXuzS1tTY8QA/2f5RGC8ka/mwr0bT4wsSIBwAK8p07TdXvryGSV2Nokm4hjnheR1r1jTp90cjumyNOdzcZx149K9CjFxV5HHVfNohdfEz6U1pbg+ZdukAIHQSMAx/Bc1k/Eea6g8N/YdJna3mDpyn9xRyCO4rVW50/UGt9bWf5NPEjtGvQll25P0GSK8R8G+K7/AOIGvajqF4hSwjfyrf5SQcMep6dMVjiqtNpUZytc6cLh6tpYiCuo2/Ep+E9CuNb8SRi8ZDbwFZcN97Ix/M819iWUCW8CxoMACvmi6uZ9H1m5FmIR5kiAN/GyjA49s19MKzrahn4fYM49cVeAhGEGou4ZhKU5JyVtDg/F8yyqEdgkeTuZjgADqSewr5D8Y/GyzaeTw14AlDMuUn1ADIU9xFnqf9vp6Vz/AO0r8SNZk8QXHg+JzDYWpVZVj+/MWUP8x/ujONv518y+HrwQai7yJsRwGAHYEVblzM5owsj1e1kKlmyWZ23MzHLMx6knua3kSO7TZcKHHoRXNWs8M6homDVvWjEYHvXREyfmZuoeE0cGWyPPdT/SuMutNntX2SoVYV7HHKQAD+lTNpyanttjF5jucKAOST6d6vkRKfQ8DaJs4xioypAOc19AeNfg5qvhXR4NVvXVJJxuFrj94q9iff2rw2e3kjYqRismrbmkVcz8gYp6+uaUp6io8hDg0Ilku7vVzT2826WMnHBP5CsV3wxPWprW5MUgYd+PzrDE3lTlCO9jSzeidjpbSwvtU1JNPsxl5D+AHcmjxf8ADzxBbzi+02FZICqrIqjaAQME49+tbHhq8uPDPiS1udaheOGbKg7cswbuF6mvRbz4p+fqk3h9rC3hgXcu+Vt+WAO3djjBOM1+eU6WZrEqGFp3hbW+h62FjTw9N/WnZ3seAyeGXg0oRGLZdtN5Y3E5Z8ZIHoAteseFPCdjpunGMgmacDzH6E+wPYU3Sde03VZxa3OnNZTCU7Snzx7sHPXkce5rv9ORJyYkwNoyGHp7V9LTqzbtVg4y7f8ADaH1eDXtaVpu6/Q50eGrYbhbrhuxbnH51Pf6RfXFpHbXMrvFCCI04CjPXgY5PrXYpCYz5hB2ggZx3NWLm4iDC3G0St0DHH/169KL7syhleFhPmp00meK3ejrGxVgQB61z0+n4O2MZJNe5w+GLvxBfx2Fsfnblm/hRR1Y17RpXgPRdDsd1hCktwxCm4mHPHVgD09sV108P7TXZEYmpTw61PhaS1nspN0qMjHnkY/nXc2/ivQvCmkK8IY3U6BpN54z7L6V9iXmg6Ndyhru1judoAHnKGAx3A9c+tfNHxy+F2o+ItVtNc0FU+6ILhPuhQv3XAHXjg/hWsaChJuLufN4nMlUp+wpqyvc+bPEvxA1PWJW2uVToK5SLRda1MfaBE5VuQ7ZwfpmvpHw78KNB0NVutdcTzjnBGcH2X/Gum1W40mK1aKOBYo0H3m4OKmU11PHsj46tZr3RNSQhmgngYMrA4IYHIINfoH4B8QTeNtBtNQmZWucFZlBHDqcZx2B618j+O/DSSxpqFqVx13DuPTirvwr8YyeHbl0Tds4DjPNc1WKbUkSp8t+XR9/wPthfC+laddnU5VAnYY3sc4+g7VxfjW/hl0yXTrHl343dOazX8ZjV4QY22k9AeprA1DcyBiCxJ4ArrjyuHJbSx5MqtSOI+sKV5XvfzPIEv59PaSzuZZHAODGpOM+/apItanik/0eJE3/AHyCSc9q6yfTkuWKXY5/UfjUtt4XsF5fd+Br5bEZXJu8HofomE4loKNqq5X5I8+eae5aWPzHZ1OcuM4zXWppWsL4fhaK2d4fmkZwPlyeM/kK6+Hw1pyOFSMsenJJzmq3xJ8Sf2dYReFNNYRxQIBNt7nH3c+nrXq5ZgJUqvPI8XOs7pYqmqNG+/8AXU8we7YW8RB5Q5/Wq1y5F2X/AL6H9axtLa4vBOq8oo3fj6VfuJG2wkjJCkH6gUqkHCpPte4e1jVhTnHfls/laxx+qSb/AJQTwP616j4F1WPWPBt7oU+PNtdxGepRhx+RFeS6gw3k1e+HOoG18URxOcJdBoiPr0/lXRR92UKnZnk5h71GcUOjhKzlM966jRv3NyrsPlPBqhdW6wX8isVGHbqfet63i2hSO4yCO9fWuPvNM/OZT7n/0vznYtOUgQEliBgV90+EtVTwR4AtrGM4ljTfjsZZOn9Pyr418H2ZvNct8jKKwZvYDnNe7a1rDXV5b2EZ/dxHzWHbjhc161F/u5f3tD5fMJKMoU/mbXifXZJoI7dnLPKRu59OTXHXWpFvlY9KxdS1A3OoFs8RDaB7nrWNPdMSTyTXn1ppPTY46UXJc0luXbucOcqOc559qxmmIY9qZJdsecdarGRHyfaueyPTjG2jB5AeF/Gqsj8fL601iAMdTmoZH+Uk9qhdzoSPoP8AZ30Y3HiW+1+RcpYwFFPo8n/1ga+o4bpbfSbvV5j/AMfDsVP+wnA/PmvHvhNp7aB8MftqLtudVlJX1O47Er1fWIUM2meGoj8i7Wl/65xDc35nj8a0rv7HbT9Weph46X7mjp0bFbWCXhyAW9jJ87fkoxU17dASTXj9ASV+icD82NOtpMedfEfMqEjP96U8fkoFZFy4N1DYk5UNl/8AdiG5vzciudu7R0pdTXt9thYS3En/AC7xbST/AH3+ZjWd4OhMtubyT+NmkP8ASofE8z2+hxWmT5t24J/4Gc/yrct0XS9BRR8rPhB+NZuWrfY2S0May/07xBPcN/yzOB+FddcriNY1HLnFcz4XgLeZMerEmu2sYGu9TRcZEfOKdON2oim7Js6qxskt7OOIDHFXbize7spbWNvLaRCobGcZ9qtvGBtUdhViJcc163Kno0efd9D5/wBU0/xJ4RsNQvb0KbYQSgyK4CsApI4POaxfhtr9rofga3sDGqu/7xm7ktzzXrPxW8P32v8AhSa3tGbCBi6KMlgRjP4V8w21nqkVolqq4MS4IJAPFfnHENCr7S1O9tD73Jq1OVC097/8MeoQeL9NOvWr3qiVElUlc9s19bSzo1qJYzlXUEH2PSvz30XQNR1TXILaNCXeRQB+NfesqGz02G1zkxxqpP0GK9bhiNSNCUZvS+h5OfKDnFxPys+OWqW7/FTXTcfPGbhF25wRtjUcVwul3Onz63G9vxH5QQhvWtH4vSxTfEnXpJVDZvHHPtgVwD2DJaf2hYNhUI3rnkfSvoPapOzPGdKXQ9ok0qPPm2rGJ/UdPyqWG+vLJgl2m9R/Ev8AhXkumeLb+0ZY5GLKOzc19Q/CbwdrHxSm8y1ga3soiBNcuP3Y9lP8Tew/GuyMrnI007MPCem33i+9Sw0SFriV+y/wj1J6AD1Nfb3w8+Fmn+D40vb4Ldalj/WHlY/ZM9/U10/grwT4f8Eaf/Z+h24Vn5lmIHmSH1Y+noOgrsmYKCx6DmtU7q5m1Z2PkX466kbnWRaFuIgFx9Bz+pr5Y1azsrhWeXCkZ+bp+dXfj58T7q28bXWm6cis6cs7cgF+cY+mK+XdR17WNXYveXDsufug4A/AVlCatdm04tOx6bK1rJcPb2sqysnJ2HNZ8qlSQR0rA8By41hoz/FGRzzXpN/p8MgMmNp/SnbmVwuloziGOc5FaWg6hDpeqw6hLH532dg6xHnew6D8+az7sw2+Q0g4NbngLQI/GWuHT1uY7Qwp5qGTOZHzhVXHqep7CuatONODnN2NaVNzmoRPpj4beELuG3k8eeL2ja/vI2kjWYlpUDH5AF6KMc/SvmfxzYy2Hi+6dXjka4BeQQZKhiegyBXsENhrGm209pqF27TuxR4vMJigiUFvMU5G44GAK+b/AA/f3v8AwnFs8czSStOAjPz1PXHTpWGGhWp1FW6HfiY03S5J/wBf1Y9sj8M+INM8IWevjz2tpgFkPVVL8geo461a8M6m9vMGJJXODX2X4T0bwz4r8NLo2sI0ao5d4UldI3f+9gEZ9hXisfwR1K18S3UZnij02OQmKQHLOp54Ttjpya1nBVHzxW59BSxtOi/Z1Ha35FK/1pdL0p7lbkRTuyiNCm8AEgeow1O0v4T6rqMzapf3TNK7rIk8pIKgHPyrnPNe06V4Q0HSnFykAmnGP3svzHI7gHgfhXTyzwQR+dcuqKOrMcVlTwlnzTZ4uKzTmn+4MbR9Es9Fjc2y7ppRhpWHPHYDsK0mOwF5Tnjqa47V/HFnaBlsEM7D+Lov+JrxXxN8TY1LJd3RJ/54w/8A1v611yrwh7sTyJurXfNNntmreLNMsSQGMjL2Q8fnXkXifx9sjZryZLaI/wAIPzEfzP4V4Rq/j7VL/dDYf6PGe/Vz+PaszTvB/ibxDL5/kud3WWckD9eT+Fcc68mbQwrWsjY1T4hNITHpURPUeZJ/h/jXI3k93qcZe9kaTeOh6dOw6V7dofwlsbfbLqshuX/uD5U/xNavi3w9ZW+iPHbQpGIxlQowOKyUtTSdOCXunyzpXiSWCF9DvlMgXIjBPUemT6dqx4F/szWH7JJyKg8WWr218ZY+O4Iqg8s0kEN1IST97n0rdvl9DjdJ1L2PW7HVSuGjYj8a9B0zxTHKqxy8vnHpivDLK6SW35+UGtm2d1dWhbO3nPrW0e542Ii4J8vc99ijFxJvUkg81oFEjAGOnX61w2g62zQBX4IxzXc2kR1BlRTw3JY9qvm1aOCzZs6QomvIolHVgT9BzXm3jrwck2oTXcV3kSOWKkZIya9g0uwGmQzag390omemT1NeX+Ibt5p2bdznBHtW8argm11HGD5tTg7SxtdMh8iDJyclj1JrF1S3yPMhYDGRjtzXSSDv1rmdTLZOeBiuaXvXudtOpOD5kcBexiNXLcnpmuZsLh7S/huoeGikDD8DXQ6rO2046c5NZ2hW8oR9UUIDG4VZJSAiHrnngkdhzUculkdfPzJuZ2XieCSHXJH5AkKyD6MM12mlKJrIeq1meLAl7LZ6nGxkFxApLepFavhn7irJwvevo10l5I+Eqa+52P/T+KPAMJhWe97Y2L/M10VpdmR7rUZT8uSq59FqiltJ4f0c2bkGVAc7eRub3qpfsttpK2653sADj1PJr0pPkjZdEfDV6ntqjl3dvkZX2zcXkPG4lvzppnXA2nOetZzZXCHINPVGU9M+teW22exGHKkiWWTOVznHNRBj6VFvX5gRz2pAGbtgDpWa3N1bdkjEL1pkUL3c8Nmgy00ioB7scU4rwc13Xwo0pNa8e6fC3zR27GdwfSMZH64rWmk5pMpO7Ps3T7GO2v8ARfDkQ/c6ZbieQDp+7Xao/FjmpLCZtR1fUtTzgKy2UR9M/NIf5VStL8RRa74nkOAW+zxH/YhHOPqxq9odk9rp1nYNzK6GWU/9NJzk5+i5rJu71/q+v5HtQjyqy/qx029IoIt3Qlrlx/sjhB/KsDSc3+pTSHncwtx+HzSH8+Kn1y/jtbCe7UYBOxB/sx/4nip/DsR0/TzPNw0MW5j/ANNJPmas9m32NUtCjqsjax4ugsYyPLtxuI9Owq/4xuP3tvpkXYZYfyql4HhN1cXviCc/6122E/3V6VVhZtY1+S4PIDYX6CsleyRo9zuNGhFvZhiMcV3Phi2LF7g/xHiuZlGyFYY+pwK9H0a1EFoiAYJFd1CD5uY568rLlLcwAenR9abL989qdGPSu04jQQcVzniDwTo/iIJJKvkzIR+8QAEr3Ujv/SujjPariGlUpxqLlmrouFSdN80HZmPonhTQtAO/TYArn+NvmbnsCelaOo/MhPYCr4NY+ryeXauaSjGEbRVkPnlOV5O5+OnxPkFx491yUd76cfkxFcla3Bgt5UY/K6kYrt/FelS3Wv6je7v9bdzN+bmuGuLRo22HrmvNdGTPSVeCe59Efs+fBGz+J9/NqmsysumaeVEsacPK7chQewx1PX0r9R9E0bTPD2lwaNo1ulra2y7Y44xhQP8AH1PWvAf2XPDZ0L4WWty67ZdSlkuG91ztX9Fr6SFbSulynJN80nItRqoGe9Y/iK6Nlo91cZ2hYyM+54Fa68YryT42eIV0LwNfzBsMsTv/AN8qcfriuh25DKGstT8hviFqba14y1TUCcrJcuF/3UO0foK4v2qaaRnlaRupJJ+pqv5uORXPHQ3k7u6Ok8L3MNhqgurh9iKp/Guj1fxo8u6KxXanTceSfw7V53B9omkEMaF2boF6mvSNA+G2tasVlu1+zxH+9978q057Inl5tTgmnuLqXaMszduter+CtD1e0ibVLmIwqrDYTwx3Dbx364Ne0+FPhfptgyfZbczzH+Jhk17RH8M47+COLU3MKKwbZHjccdiegrnqRdRcqOilJUXzvszyrRtF1HxJ450zQNzLZeQftUuNwjQqeT7noPc12fh/4BaZ4Y8SXd2bpLy03KbfMYLgg5yc5xj2r2zTdHsNGhKWMSxbsBj1Zsep6mmXus2FgSZ5Pm/urya6JwT3ZhCvNQ9mtSe1sILMBoh8wGNx6geg7D8Kfc6ha2EZkupAo9zyfwrzjWvHf2dGYyJbR+p5Y/QV41rHxBedm/s1TK5/5aTdPwHWsPawgrQKVCdVnuer+NkiUizVY0H/AC0kOMV4v4i+Itu7nZI19L2wcIPx6flXmF/f6lq7j7XK8zE/6teg+iitrTfBetX4DNGLWM9Wk5bHstcsqze56NPBRhrM5zWfEmsamSsshgjP8EfH5nqaveGvAF54gBuJm8i3z1Iy7fT/ABNduPA0VnLbi1CzyeYPNebsg67FHGSfWvc9G0B7a1SJV56n6mue99jWU4RXLBHnuifDvQdKVZI4BJIP45Pmb8M8D8K7mOzUDCL0rsodEY4MhxWvBpMa4AXP1qnG5yub3Zw0emTSAbVwKxvFehO2lSjqShH6V7IthjkisfxDpqPpsi45watIxbufmJ4ysWmvYbcDBk4/Lg/yrmruCIWrRDIEeFX+Vez+I9H/AOJpczOo225ZAf8AaY8Y/CvJ763kjuDGQSD6e1FVv3bbF0JQalFvUy9JkKH7Mwz7muxg2xJxXIpA4l3R9a6FDcRpiRSPeurWx4NTrZ6HV6deeWeOxr1bwlqNzPfJbwnO7O7PQKBkknsAOTXhdu7oRjvX0Z4GuNO8HaVPfa5CZZ76LaqYyUjPYg/3u/tXPWxNOjZ1Xa5tg8ur42T+rRvy6s0dd8YadLDFbadOtxaybgkqggFlOGBBwc5rzS/lZ5GZjgn19Kzta1KPUbtVsYEtLaL5Yok4CjOfzNWZcKMud3ArmoYn2kpQi7pHp5tlv1VQm1Zta+pSA811BOAetcv4imjjlZYxtA4Fb17cJFAxPH0ry/VtRBLAV6S3PmorSxzuozFwQaghj1PU4YdOT/UQFivGFG45JJ9a3bDw9daoRPPlIRyeOT9K1tbuLXR7MWVku1mGOOw7mpjVjKThTeqO5xlGKbRq3Ulxb+FdO8ps7GeNWx1APb8a2fCsrOnz5LDrnmuc0ovc+ExE45inLL/usM1veH1EMoUn3496+gotunF9v8z5HEQUak426n//1PjTUrhri7t7cn7zb2HstSQeJf7B1yC9SGO4WIHfG4ypDcHj1xWbbN9o1CW4P3Y02D+tcvd3Bnu5JCc8kfhXVOo4+8mfGYaClKMZdFf7z6A/4TD4ceItSlF3p/k/aVTLsoG0qOgKngAjsKtx/D7wlq1vc32hagwWMdxvUHoATXz7poC+ZMQeBgV1mn6zfaJGrWk8kfmEbwjY3Dr7j9K4HJfCetUrKPuNFfV/C2p6LtkulBWbO1l5Bx1rOt7GedGZV2hOueK9x8Ha7LqFu9tq4+1QHcI1lwTz6nHNdVfeB9Ln0e8mVhArRtuYfwDHv6VjXmqUXLofO4zN6VBqD3PkWS5dZmAOQOOK+gfgVaixstd8VzLzDEIYz7nk4/SvnpLZpLn7PCS+W2rgcnnA4r7l8N+GrfRvDuk+G4UCtdSpLcd92wb3z+WK6KTXI330/wA/wPp6MoucY/M25bLbYaJ4TOS87Ca5PsP3j5+p4rs4JdxuL5PUrGPUt8q/oK5S1uBd67qmsdVs0FrCf9t/vY/DFdXF5drFEjcLChnk+vRRWN2/efXX7/8AgHuJWVjlPED/AGrWbPRUP7uHDyfROT+bGtbxLfPYeG1hiOJr1tqjvl+B+Qrj/Drvq2p3eqM2RczeTH/uKeSPrzXRzNHrPjOOFyDa6RH5r+nmHhR+A5qOiXc2S19DpZ/L8OeForGPiRkC+/TmoPCNngfaGHXnNYGu376rfxRDheoHt2rvtJjW0sTx0AqU7yci+VJWOh06M3mphf4Y69TgXaoHoK880GEQIJ5iFMh78ZrsYrqRXWPH3ga9Sn7sVE82p70rll8luaevGMVD1NTxnmtkiGXYzVtDnmqUZq4gxVkFoGuT8UXSw2Lk+hNdQW2qTXl/ja8Is5vZGP5A1jN2RpFan5ra3bXFujX5ORcPJIARg/MxPBrjLdX1C8t7ULl55FjUe7HArr/EHjEatYW1syKnkRiPK98d66T4C6Enij4naNaSIGihn+0P3wsPz/zGKFbRI5lJtu5+p3hXSE8P+HdP0aMALZW8cOB6qoz+tdKAQN4H4U0DJGR3NWsYGBU8l2zr5rJEUZJ618Y/tZazc23heazb5DcPHEoz1Uncf0Wvs+SRIozIegr43+L/AIK1H4o+IbeBJFt7C2kZpHcZJxhQFHc8GubEVoUIXqPQ3w9N1Z+6j86NA8F+KvF94bLw5YTXs2M7Ix0HqSeAPc11/iD4JeN/CccEuvwRqbjgRwyLK6E9BIFyFz9a/Rzw94T0vwloiaRpKBdi7TIQA7nrliAM8nj0rDTwDpdzePd6g7yl23FAzKv0POSPyrzKWNlXlajB27vQ9xYTDU03iatn2Sv+qPlfwH8OMqn2W1M03GWx09yTwK+l9E+HkduFl1Nhn/nmn9T/AIV6FDHY6bbeXEqQQoOABtFc1qnjLTbBHeMhgvVmO1B+Jr09FrI8VyvdUzqbaytdPj8uBFiUen9TWRqHiGwsCVRvNcdl/wAa8C8SfGG0DtDbSNdv/djO2P8AFu9cAl1478aMUso2ht2/55/ImPdzyfwrJ17fCa08LKesj2XxJ8S7a1JjnuAh6eXDy9eTah451C6LLZgQRk/fPzOf6Cqg+G+o27Ob+5WPaCzlVLN68ZxXdeG/BWjm3hvXR5/MUMPOG04PTKdvxrllUvqz0KdKlT82eYwWep61cF445Lpyfvt0H4niu40z4dPKRJqc2B12R/1b/wCtXtFrpNtEoRAFA6ADArVitYl4C1g5dEaOs9oqxxOk+FNPsF22UCxnu2MsfxPNbMtvHAoROvrXUrZzynbGh5rotK8KoXFzejODwDQk2zllLW7OY8OeFzM41G7Tj/lmp/nXocWnADAXFb6QJGuFAAHSn7BitlCxg5X1MhbNFAJqYQqOlXCO1M71duxC8ysUGKytTjD2kin+6a2WrlPFmpxaTpMk8h5b5QPWqSu7GVSShFtnxP8AEBrZdUmgt/uhy7e7GvGr5VLN3Fep+NoJoWe9up4ppHlcp5S7T5R+6GHqOhNeYzOpYO4yM812KFlc+eqVLzd2Y9uBFKJcdD0rTkZrpgMYxVVUDP8AL36V7t4X+GF8lkus61EApAaO3JwxHYt6fSsKr5IuSV7djrwsHWmqPMlfq9Ecf4X0B7fZruqwZgDZiRuN2P4yD2z0Heodf1vVL+7d9okiJ4wcMP8AGu616LU76XYI9irwBnAAHtWDFoIX57ptx/ur0r4uVLEYmftKsD9cji8vyuh7KhUv101u7f1ucpp0b3cuXikRBzuYcce9bM5wOnTnNbkkSrGIyu1RwB6VyusXKW0WxTl2OFA9a+kwuGWHjofmmY4+eOrc706I4rxRqEkjrZW4yWPaqeleHNsqSahks2WC9RXU6fo8LxG5MheQ9SeSK00uE8qRHA/dNtB7nAHWvn8Vmbd4Uvme7hcvpxjGU1qULyQaZYPcSjMY6E8V42TNrOoktnBOWPYKO1bfi7Wpr69eCCRjHhVKdgR6VNpOntaxDAzK3zP/AIfhXr4LDqmue92zycZXc9LWsa0aTRabdoOFZVKjPQKaf4XdQ5IPzZ5BqSUylJFfhWQrge9c7ZRNFJvzyDwM19Vh5e7ynyWLp6t9z//V+GbaUw6VJcvw0mWzXIEnNdPq7eTZR26dzj8q3Yvht4luPDv/AAkiJH5HXy9370r13bfT8a2qwevZHy+ESnKUu70OetzHHbpsH3sZz61cOpi3lK7EcFCvzjdjPGR7jsapiPBWPHCDn61D5KSEuTj+tefKz3NJQu3c67QPEsenEKc8HNfUHw01bwR4znTQ/EuoGzgnGyXPHytwRmvjH7MgBbJGB2qrDPKisyOV2n1q/db95XXZnjYzKIYhqadmtT7W1jwJ8OvCXjCbQvDzRXirMvkTMfMY9xg89K7iSVLSa61SX7ljblEz2Zhlv5CvnP4J2rX+rS6reFnFlEXBJz8zcD+te6+IGe4s7LQ4j++1W4Bf/rnnc36DFYwoSgknK7f66fkezlGClRc6tSV23+G5b0GydNL0+3l4lvHa8m/4FyM/gareONak07w/K0R/0jUJBHH67fuj9MmuiB8+8uJIMKq7bSL8OWP4CvJfEV+uveNY7RG/0bS15Hbdj+gpzd7Lv+X/AA1j6yK1O28MxxaPppllIEdlAWJ/2iMn9Kb4fDmzBmO2fUmN5ck9Ui/gU/8AAcVDqJj/ALKt9MmbaLxjPcH0gj+Zvz4X8aC91JELVFK3mpkO69DFAPur7cUSdl/X9f8ADGtrmzocZv76bUmGI84T6DgV6XBE0xhtRyWILYrm7Gzjs0g09D90bn+grv8Aw3bGaZrt14J4/CtKELyMqk7RO4trOH7OsMiBlx0IzViKwtrb5oV259+PwqWEc7Vqd2XYAPWvU0POZUNTxe/eq5IzzVmI00VYuJwKtKQTVZanHNPYgZcybYia8n8YI8mmX0nZLeVvyQmvTrpwfl9KxZNKh1GKe2uV3RTq0bDPVWGD+lZTjzGsNNT8ZILa8vXKW6M/rjoPrX2v+x/4Uddc1XxHOdxs4VhTHTfKcnn6Cveb79n74ZDTjAtjJEFGR5czrz+BruPhH4O0nwT4Zmg0xSkd3cPIS7bmIX5Rkn6VlZpBZN3PWrZi8ayMMEjpVvtXL3vibTbFNiN50g/hTp+JrhdT8VX95uQSeRH3VeOPc1cXZENanba5rFpbRtCZBvxwq8nNeYxTELt4z3Ncxf8AiPTrEM8j7yOTg8fiTXkPiT4x6baFoLJjK/TbDz+bdPyrirqnNr2iudlH2kbqnpc98u9Rs7Qb7mQA+nf8q878RfEvSdGQlpUjPbecsfoo5r5o1Hxl4r19yLY/ZIn4+XJfH1617n4C+FtjFawalqEH2u8lXc0s+WIycjAPTis51Gl7qsjWNFXvN6nHT+KPGvjGTHh+ydYW/wCXq7+RB7qvesHU/hf4k1XUbe31PWfPMnMg2EKnf5Vzg19laf4XjiT94OR2rntV0lW8V20ScDYc47/Ka5JSb1OqFo/CjyTw98J/Dui7ZHiN1MP45fmH4L0Feq2ekttEcUQVBwMDGK7q20VEAO38a14rFFwPShJy1YSnfRnnU3hCC+w8rFH7MBn8xWf/AMIVqFu2SSV/vAZzXr6xKOMVIMpyprRRTMW30PMLfw5LnDA/liuhtfDgAywC+5612DyORyagZsnFHKugcz3ZRg022tzkDcR61dwAMUZqMtxVk6ik0wntRuAFRMRmgTEJzxTaT6UhzSBIY3HBrw74l3Vxev8AZbRlxB94MCQT+Fe0XlwlrbS3MpwqLkmvnqeVtSvHVMsZnOM89TW9J2dzy8frT5X1PnrWtE8RaxdC3tbRpnYjBgDMBj+8SMAfjUNv8GPHVz80lvDBuPO+QcDsSBmve9dtH0/EOmztCYxxg4BPfNeeXvxF8Q6PMtnPhnb+JuK669eMFzT2PCwmEqVZKnSV2bXhH4T6d4alXVvEUiXU8RzHGB+7UjoSDyx+vFdLrviGFw0cRyfavFtb8feIUmQ3UBaOUbgS+B/KueXx9E0vk3Vq4YnA2kE/0rljXjJWp6np1MBXpNOrE9BuZpJnLZ6/yqozEHAGeOax7TxJpF1J5Ql8lz/DKNp/wrZZlI+UjGM5rJtbmbi4uz0Mi+2jOefp7V5f4lkYoWHBU8Yr0vUJUQFnYKDjkmvM/ESfKSD15FL1Fe0k0N0fUxHDuB+cnG0DqPp7Vl+IdVGnwTRo+6aZsr7AiqGnn7JP9qmx8mGJPQVma5PB4i1CKW0+UkEN6KorgWCpOfNKJ7UMTVStGRR0PTWvJftlzkoh+X/ab1/Cu3VkjOB6VUgEdvbiBPlCDAqBpjwe1emopWaM5a7lxpNwIb3GaoxRxxMW+9UTSsOn1FMeXdnGc9K6VJwWhyzoxqaSP//W+Hmtor6QmfPy9MV12iR+INLuba3sdQkEN1geVv3DaxxgjtWT4cnYapAQIZFMmSsucfj7V76kegveWskthBDey5kSSLOwIOc4OMYx6VcnKLcr6HzWDpT5FY8V1LTLafxJcWsAEUTTFNwGQo6E4rmNQ06C0uJYI2D7GIDr0YDuK9ZXxdHpA+06fbK96Xk82Z+VdSflwB0rztpbae9a6vlPlOxZ1j4PPPFebZxaS2Nqko3tfW5yghR5VSSTahIDEckDvS6pYWVvdNDpUrTQEja7jaT+FWLhE8x/KHy5+XPXFWNN09tQv4LSEHdK6oB7scVpFuTUUTztaWPp/wCEGhPY+FFkkG19Qk3E9/KT/JrsLW6ju/Et/rGMwaVB5MR7b26/4VpyNb+HdBJX5Us7cRIPU4x+prN0K1FvolrbSj95eSG6m91HIH4nArWb5p6dP6/I96jHlgX9R1NPDvh2W/n+/DGce80vLfzxXk3gq2lnYzzgma+lyxP93qxq38S9WN9f23hq3fIQ+ZN/vHnFWLC5/sjTLnUIx80MYggA7yP6fiRXLfmk5Hck0rHWxPb399eapPlrW3IgVfVYTkgf70nX2FdDph+wK+uagM3l4f3a4yVU9BisfQdLEVnb2VwcQ2qiW4bsz9cZ+tdNoqNq962rXI/dKf3Snso6VTvsyla5vWUM4UST/wCvuj0/ur2Fex6XALS0VcdBzXnegxm+1IzOMpH0rpvF3izR/CGiyalqs3lAgpEAMs744AHeu6m1Tg5SOWadSahBG3ZXqbZpriZUdjwu4DA9hWfFeXgzIkkbhjwpODj0zXx14Z1WTx5qdxNqME7XETCYFpWjjdNwBGAMggHI5r1xIUtlW3t7r7OcMmQC77icxvlsjtgjvXh1s0UHblPSjgFFe/LX0Pek1N0x9oiZfcfMK0LPUopZjbggt6DsK8UXxA+nN5VxcozKcgyN69QAOcema1LPxbpWm3UV1cXMG7BO0PtJGeTz1xWlDMK1SpGLg0vMwnhoWdnqe6GaKEbpWVAO7EAU4zwiPzd42Yzuzxj1zXzP448ewakV0+w2yW7uJfMVg2/sF46AHJql4d1rxGtrLp9uxmtpBho36AE8hSemfave9r2PpqfCs54OOMdRJvWz0VvW+59NNLG8igEEsMr7j1q0nlQIXmcIo5JNeX/29dSSrcbBEyoEVAchfX61zWt+LLeA79QuvMYdEU5P5DpQ6q3Z8XUhyvlTueo6r4ltPKa2tQZSeN3QCuNutblitlhubjy4IxgJnAx9B1rxzU/iBNJmOxQRr6nlv8BXjvjXxTrj28MFlcNHLczpFvBy21jz9K5ZVuiOinhKkvetZH0VrXj7SNKiZpJVXHdjj8l614rrvxVv79jFpULurfddwQv4KP6muu8PfC7S7RRPqRk1G4chi0vIz7D/ABrrPEXwwl8RWcS2X+jSQnKbBjj0xXH7dydjojQhBX3Z8q3d3r+vT+VcyyzEniNeB+Q4rrdA+H+pykPdKsYPQKNzfn0r3/w98LpdLULKm9+rN3zXqem+EBGqmRcCs3J3tFFbr3meOeB/hzI94sTIPIHM0jDLFf7oPvX1DbWcFvGEjUAL0pLGzgsovKhGPU+tXRT1a1M0kthOnNcXKobxfAx/uH/0E12LN8tcTJJt8X2wI6gj/wAdNSx+R3wHpSGgNjioyR2q0KwhOBTc0hNQlsdKryESE1HmmFuaYXzRewDt/ek49ai3UZp+Qhc4pDTGOBRmjYSXcQ0maQkmoye9BVjz34h6lLbWEdnE2DOTux1wK4vw5aBIX1BzjHyxj+ZrA8c66+teLzptrIRBaoQSnJJHUCqs3iGewiSEyBFACqjY5x2+tebUzWhQmoyu/Q9F8LYzFR54NLS+t/8AIt+Izv3HJzXknivS01GzFwv+stwcn1FelSalDexebnHYjqc1RESNnaQw68V7U1DF0lJbM+Pw9apl2J97SUdGj5eubh2b7PMzuqgjJztUfjXKwq4ZZpSypu+Vxzg9q+m/EfhK11i2kJzFIRjcleMal4M1W1jNtFMjxdgw2n1rz8PhJ0W7Pc+pxWb0MVGPMrNfmcjLK1zc5uJM/wAO8dMDvXRW+t3egusNvOLmBx91ucfj2ptn4X1W3YSFI5VI5Xd2rVtPBF7PcB7llihJ6KckD0rucErQ6fI8SdanUhKU9ZN+d0cbq+r3mqOZJyQF+6o4A/CtS8m823iklJwYwfqcV1+q+BLTdvtZWjBHIb5q848RTJaO1pDk+TGBk9u2TWj5ZaROCNro5bVb5pv9FhJC5+bHc+laGl262kJJ/wBY/JP9KoaZYNIVupBwPu57+9dEluvHJI/lRFLY9BJJ3RE0jYxnmmnJXBGavRwxLjpn3qUqM7h8tFuhT7mS0cuRxirHkMRk/p1q6enzc46YqTdjkHmiMXf3iOp//9fxv4a6vo2qaSdBvoVktIU8yRAi7vMzgHdww644NZ5g0W1vdT1WCWW4i06J1ghlfBRCpyuOvU8Vzfge38AL4Nu7rVrkR6qThVMhVtvGNoHc81oeIItDe+1J/DRje1+xxR7oyT8zEbsk5y3rTxUFGXNfVp3+f/A0/A8bBxVOLjF9bnm+q2rR6Wl5Dep8wBMKkh+e3TBxXMm+uFXlskjjPIq/IkC3IgvI3dVHBQ8+1S2+oW1nY3WnSWSTNc4Ecr/fiwc5GO9cijdXE+WXQxFvJlywG4DkmvUvhDbjWPF0Ujp8lqrTH6jgfqa8wutJ1axIN1byQpMoZWcEKynkYNfTH7P/AIck+w3Wp7fnuJBEpP8AdTk/rXTShZuTWwRpK60PR/E7tfXtloUR/wBY4eT6VvSzxwyzXAAVLdVij9Mj/wCv/KvHPGfjoeCPHF1aG3/tGaOJW3BtixlxnHQ9BXmt78V9dvWgjjgSOOOTzGXJPmHOea5Kfvq62Z7+kfd7HtWt+AZrXWP7QsZDdT3CGWRJCqsGboBk8ip4dC1KXUtM0m6gkSC3BuZmZTtaQdBnocGuC0bxvrvxF8Y6bp1zBDAlxOiMIt2QqctyT6V9G+LrHRvh/pcviH7XcJGXVWR5NwyeBtHaqdNwXM9rijNSdr6mHrcvy2/h6zPz3DbpSP7vfNdauywsUtbcY4A471wnhXxhYa6xulvbeWU/cUhd6r6eprv7E/b7oy+WhSLkPkqv49RUxi72Zs3Y9B8PWgtLRCfvvyfXmuT+LCRTaPaJLGrjzyw3DOMKeRXhfi34lLN4mew07zLl1dYIUtWyDt64Pcls0uu3vjj+yo7rVIXs4C22L7bIgG4jsMk5NYYnEOdJwjH59Dvy+glXjKUl3syzpoFlcmaJVBIwTyMD8P610t1HqEsk7Qp50flAswOAh7HPqK8Im8YeINOvls7+CI7lLBo8MGx0A2kj607R/DPj3xGkoiuZtOsp8hlLSAFW64BPPWvGw+EblzTPfzCUJK9N7bt7HV+NfFvhjRbOOJdQhnvSF3m3IkPPXJGQPSpNCubLxwkl9Y2V01vaqgAmXYk5B6Bh1AJyRWh4f+D/AIJ8LBbvVz9ulQ53XGAgI54TofxzXQ6r8TNA0sC00wCVx8qpGM89MACvpFThGze6PlIYmcZ3pK/4o7mz0LSbOFZ7mGNWRe5+VfYZqvfeM9J06Py7Uec69k4X868I8V6r8QNS0W51d4zY2sSjAc4cgkAYXt1ri49SvYYgpkLMAOSadWu97nZGNXFe7WlZLZLZei6HuGq+NtTvsosnkxn+FDj9etcDe67HGcyvn15rzDUtcvznfKVHtxXFXXiKcttLBzWEbz3ZtONLDq0I3Z6xf+LSoK2+B7msHQ7m78R+L9JsJHL7ruPgdOteVT6ncTn0Fer/AALha8+JmkCT5sThufYE1sqSRxSxU6js3ofp3YaHDAACuMVvxW8cX3RipVp1cdrEt3Wo8OB/CPrikZi1Mz6U7NUKw7jFNz2qMtx6U3cQKSExzNxXBXTkeMrTHqf/AEA12pYng153euf+EysiP7x/9AapexSsenh+M03dzVffSbj9KroJ+RIzflTC/oaj3E00mqTIAtzikJpDzUeR09KAa7khNJTM0wPwe1CYyQjNAxTAT3pSwqr6XEBOKyNY1OPTdPmu5OAqnHuewrTPHSvHviXrIQLYwkHyP3kmfu57A47VlKfKnI0px9pJQTtfqeRRWl1bCfUr1Gae+lJ+U4wueCT2rG1WSV54laBZYg3LMeUPqBzUeq+KL5tSttPnwHlYBwBgDPOB36VbS+06U+ZcLs2sVQOSA2PpwK+O/s7EVanPa2+77n6XW4hwdCly3cnZbJdPXoxdMcmSRnO1SQBnoa3reNYZvMLfKeuK4jU9bDSYgjAzgFR/SootfkSM7gw2568ce9fouGUaGHjSjLY/A8fVli8bUxNSFnJ30Ow1HxP4f0++Fjey+WzANkg7QD6kVPe6LY6tbia2dW3D5WB7GvCPFus6XqlsCZk+1QZ2YPJ/2ePWtLwrrWp6RpiQ3OTvbKKf4Qa5sZjaWHpe0n9x1YXA1cRLkpnUajoF9p7BowSqjtWWk00akEcjqDV+48X3Llo2KgKOSTwfauN1LxhAg6ZfphR0/GvAo5uq0+WNKVu/Q9irktSEeaU0amta3b6fYSXF42CqfJjqW7KK8Cs1m1ae7uJ8kOu5j/wIcVJrus3mvX58w4RTtQDoB610Ph2COOT7FwVljdPqSMj9RX0fupWRxUqLitSpEoiRQBgenpUwPy44qNzsOw9QcEU5JFwd3U9qctNmdS1dgKAkAnrUmT0Y55wKhzk5p5xjDH/Cp30YbDQR9eaeCOpGM9MVCDg8c+1KZGHA5xTiurM15H//0PiC68N67pIKalYzwe7oQPz6V1PhiSxtdA1L7VvJYoqbP7+cjPtxW5B478X6eiLa3w1CEqGKToGyO/XnA+tWB8R9DmXyte0C3KuwZpLU7csO5Hr+Nc8o1HFxmvmvX+upxunC94M8futQnlvWAxycAEYrpvEnhe90XTrXUbvBW5jDqQD8p9D712Opx/DDxVcC9hu59MmCAbTGCgI6Zxn+dWbrw1qfiCxi01PEVpe2sCFYR9x+nAPX+dYt8isr3FDCtq55zFqGo+JNPh0vUNQSGK3wI1kPBx096+4vhTow0Xw1Z2qjlYQWP+0/zGvjXRPhj4nh8QWkV5bbrcyrukVgyhQeTwfSvv8A0OIRWYVRgZwPoK9CNXng5Re4lBwdmcNqfwU8Ha9r11r+rCeea6YMyl8KMADAxjjjvVqx+BXw5s7sXS2JkI/gdyyfka9TiJXNWkbJrKEeXSJv7S+5zmjeA/COg3aXulabBBOmdsioAwzxwcV4D+1Xq5h8OadpKHm4nLsPZB/jX1K80UCNLKwRFGSxOABXw98fbyy8XeJbZLO+jNrZxFfkBdmdjk4A+nWs5qU2oIqElDVnydDd3No+63do2HdSRX0H8DfGnim58aWmkS3Ul1aTq6SwyNlWXGec8cVwsfhzRI48vbzysP4mfbn8BWv4T1KDwbrX9saZaFpVVkCyEsAG+hFdnLKCulczVVSdme9fErQdL8LeINM1jw1ZmyuvMa4YlsplSMYGSAM54FdfqHiQ/EaG3t760Nulkyys4bKs+CMBSM4714Fqnxegv7hRqsamSInaGJ+UHt3rmb3xnqOtObW21P7PbuctHANrH8etc1OMlo46XudNSSV0pX89T6Suf+EV0uf7VIiXNzbKX+RfNkUdzgZx9a4WX4uapq0jWfhHT3nYHbvI4H1J4FdJ4O8f+CPD/ho6NbxyrcPGRJIUBMjnklmzk8/pWj8FfCsc/hj+0rlAr3NzK5HX+Ir/AEqqkpJttGdOEVFRT0PALrUfGPiK/exu3kllVirxoSFBBr2b4YfCzVJNbTU9SUBLddyr1O89Pyr6OTwFoHmG+to1imf7+FwSfUmu30nT7fT4RFAMDue5NcLm3pY74PseH/F3Q49P8ByqBl5rm3j593BP8q+Vr9TG23GMV9g/HKbOkaTYg8zXwYj1EcbNXydrkews+MDvWcVY9jDaps8p8TSnYsangnkVxg4rpPET77hUUZxk/nWCIpCemPrXfSWh5eLd5ESjnivon9mq0W4+JdkxBJjDv+QrxCz0e6uXURRvID/cUmvqf9mzw/cWHxAaSeMp5ds7Ybr83Srm7I5KcW2mfoOGpN1QM/tTWf1rztzrJi4xQW45qvv4qPe1FmIslvSmF8DmoN1NJxRfUFsSu1eaahJt8aWI9ZD/AOgNXoTvnivMtSOPGlgx6eZj/wAdaol2Ratc9R3EkEcY659KfuPSoQwAoDVaJJSSD1pu7vURYk0gbmncViTd6UxuDvpTg0wjIpiH9uaO2aiVuxpTkUBceGNISKapAHFGe9S3oP0K99eR2VpJeTHCxqWNfK+v3smsG7cjc9yT68V7r46H2uwFhE7iRmyNvTj19q+fnsrm1vQl6NiKeSOQRWkYux52IqNSSieT6louqJIJkkLSKc8nkY6HJ5qtHHq1zLumBJTjDHj6ivX9etrY7VQD5xg7f0rE8i1Ty1U7mkX/AL5I7H3rn9lrozveOduWcUefytdhsoNoA+uT3rKvTeXSlJSShGCK9Rm05Wz8vOPwrA1Owhs7Uzlsbck1ulynBJRk72PDdRsf7NP7hvnbLA9wBXCz31/c3B8+4kcLycsegr0jUnN00lwwwHyF9hXC3WnOsbFRgynAz6CtFBTd5K7OhNwVkdh4SnN1p4LkkozLnP5VjazeB7yZIjlIztyP4n9B9KztNmvdNtJLC1G6W4cbGX+HjBNbQ0d7GCKSZfl5255Jbu349qUaaT0JlJ6XZhWtv5IJb7zDnNbFhclHjlUkbCDke1UZflckjnNPDbU3oK6GtNWQmb+rgLfEkffw/H+0M1m7xv8AUmrd7Kt1YWt3k70Bhb/gP3f0rJEmOWobbRBeVs5Ge9LwPcVSMuWHOf6U0zKuQGyc54qk32H5l3zVUEHvQWx8561TExJBB+tDXBUsqjcTzSi3YG+h/9H47v7qxkt1tFdkJAR5AnLBewHbPescwxLE1pDbjy5CMTSPzn1A/pTHvNJv9jyu8MnAIxkfnUz65Z20P2CLcykYaTCsQT/dyK6ZPW5x2uatvY2ChfskqsIs+cpGBx6nk4rPubGzm3y6YSgLn5Uy2FxnJzjv6Vk21xBYgIL3dDcbhINnI9M1NJfWWkQslrP9pklUnenAT0GCPzqG7gvI9p+EOl3o1B9QnuJTHHEf3ZJ2Zb8eor7B00FLKLjqMn8a+Yfg3b3LeGJL25yWup9q5/urxwPrX1NbjbGqDoABSraPlRSu9TS3YFTRNxz3qnnJxmpVPFct9dA23Ob+IEcU/hK+ikJAKjoSOcj0r4rv4ba3fZCg49OTX2T8QZXXwleFRk4Uf+PCvjXUMBsDqTya2ofEzOq/d3MiZnC/KAPrWC5bfWzM2EINYbk78ivQaOOJWl06yuX3ywqzHqT1p9rpFhaS+fDFtYjHWrEROauKM81nZdjaLdtxJZY7WGW4PG1Cf0r7E+EUy23gzSLBSNy26O2P9r5j/OviXX5fK0x17yELX1P8DLue7s8Sn5YUVF9gB0rkrWaaO2jfc+rLc5ArTRs4rFtmG0YrTRgfpXleh6SVtz5s/aE1yXTtR0GCGBrl9txII1OOTtUE/rXzndQeLNcOfJhs4m/vtk/lXvvxhIv/ABqLc8/ZNPTH1kkY/wAhXirxyM3lgkHJ9qSdlax7eFo80Lt2MWHwFbMwl1W+3seojAH6n/Ctq10LwxYruithKVOMyHf/APWqMaXeyTfZZC4ZhlSK6fRfCOsXN2sE6nDjhscMOxrS05rc0kqNLVos6fJHKiwWaLEGO1QoAGR1Fe1fB/Qbu08S3mrTKVSSEIM9mB5x9a0vB/wtUqDewmNsDJ7H0J9x2Ne+aP4ettLQqnLNjJ9cVvGn1Z5NfFqS5YotBXaniJgea0REqjHftUD8cVoqSW55zqtlbZjnrSCAv92piCeBUsQlC/KMGq5ETzPcpNaTrnHNRrbTk8Ia3EnmI27eRUqvM46VPsospVGc61pP2WuNvfDN/ca7baioAjgk3HJ5xgivT9rZ54qCSIk5FT7GPUftZdDDMTqMEdKTnGK1WBBIquyqTyKh0ktEy1V7ozycUgzn6Vpm2hYZGQaX7ApXcjZqHSkV7VGXu7U/fkYPB9alazI6tTRbZG3ndT9kxe1XQrMSjDNOPvVr7FNIpGMkVLbadPKQSPl71PspLYrnViqiOwyozWdqWowaXCZrs7VFeg29jFFEAADgZrlPEdhZXyiO6HyLz9TWsaK+0YSrNbHhuufFPTbOFp2t90fq+B074ry2f4x+A76Yw3kJhMikF+q5x19q8x+Pxk0u5Frbzt+/dgI14wB0rwzQfh/4r8Rr5tqm1OgaRtoNbyowjsQ5N7n0bd+JtHupAmlXInDHiPPIA9DVaK9iM4aNi24g475714LrXgXxZ4Tj+2XsbKgIG9OVGfetrQdVuIW869ZhGR1HUGsJQW6OWVLqj6Gs9SibdZyctgkc9BWXqkJvbGRMbQcgH+prldGvYb+/WS3kYswwFxycjHWrur66tpCdHt2Wa5cFTsOQufU+tS6bexrRk4/Eee3FjGsjxucIgzu7bR1rzfV71dRv/LgGIwQqD17V1+t3t/cQLoeno053Es4HLH0H+yK5QRWmhOqlhcagxAJU5jh56D+83v0FbqPKrGjd2dVb21jp+tx6ccGYoAF7IAOh9z3rqtYgE9orNzhuvpXmOmR3kviSC8uPlV5cF24znjgdTXuOqpDFpMsdsMyAZ3GuR3U0i1ZbnjssEcUrSTjjqF7msySTzpuAAOmO2Ku3I/fF5Dyxxms7y/LkyTnJ4rp2B2Wh0OmRxmKWA8iTp6bhWNfQhfucVZiJDZHT+VW5lQxZkIGfWpvrZGVmc6pABBOPepFReg5JqVLczOVUcVppC1tMkflgkLuyad1szVx0ciitvI67gMA9SamaO1gRwGLn1Az/APWrTtUt7h1N4zRoPU4DH0GO1dPZalZNJ9kjjyvY4449qzjUck0o7FS5IN9bn//S/PuW2mgZUnQpu/l9a2ZYodNi2SwpKsoBJzlgO3TpUtpYbrV7bUZAhbHlEsOD6/Q1SuJRa2gjkbfIsgVucgBeQB2rbY5HqzJvI1guXhQ8A8Z960BY2cRiWSVJXkwdoPAz296yroYk85SSkmSM9fcGt/w1pI1O/tYx1kuEX9RmiCvoVzH2z4G02PT9H0rTkG0IgdgB3PNexxsMcVxGjQrHcIFGFjTArskOOayqNtthy2L6k9TUu7IqmH9+tP3hc7jisV5hqtjlPiJKE8K3I7sVH6ivjvUSzOea+xPF2mT69p4sYpEihZwXkJycD0A6/ia8r1D4WaDtB/tWUO2BzGMZ/Ot6Nldsxqe97qPm25J2kDjFYxyWyelfRl18Go3XNtqw5/vxH+jVgS/BLVcg2+p2r/7wdf6Gur2sdrmcaLPF42AY4HFW0P616q3wY8SjhLmzb/gbD+a0L8HfF6r960b6Tf4gVPtI9y/ZS7Hg/iV8xwQg8s+fyr7F+B1l9n0Pzz1kavmzxl8P/E+i39i9/ApikcqpjkV8sOeg56e1fY3wy0ie00C3iVDnAyMdzXDUkpXaO6lGysz123bCg44rRRiSPSm2WlXbgF12/Wt6PRjj5mrjVOUkdXOkfK/i7TJ9R8W6pe4JLGKGP6RoOPzJrkh4R+1XJbDZ4baB7civtMeEtLdmeRN7OdxJ9auJ4T0lGDLANwOQR1rT2Njup49Qjyo+afC3gL7dFCrZYx/dfHb3B7ivf9F8G6dpsKq8YYjkZ7fSupg0uzsWLwIFz1qeSXd9zp611RVjz61aU3cWOOOJAkYwBT2dEUNnmqZuVjHy9+tRGUt171VzCzJWnPOeaj3FjyacuChzUe3ByKfkFjShiXirqCJRk9ayBceXye1UbrUYwDk4rNuxXLc6jMQPy96eqA5FcTDq6sQdwxXUQ3aNGr56ioUk3dDcWi2dmeRVZygyapTXXzYBqFZSWwemM1VybPclfB/GquwbvrU3mjOKcmGekhgkRGM09UKDg1YIVRjpinY9RxVXJRVaLBye9MeNfvjgitFlG3JrLnkCkkdBUSlZFJFK/wBctdLtZJpGAkUfdzXD2/xJS4nW0tI8uScg1wXjC6luNRcI5CBu/SsBbZ4JP7RtFyQMZHNePVxk1K0T3aWDhy3kfUmk6pPdwiSVfLzxtNVdXKywPE689RXzfoXjPX/7XGnzgiIHO89MegrvLvUpI7kTq7c+p4r06OKU0ctTL5q7Wx8zftFeHpbdLLxDHEWjhlZZeM434wT7ZGK8B8VfEbUNV03T9PtIYdOWzj27rXKNIf7znPJr9Er2XTtcs5dP1iJLi3nXY8bjIIrxu+/Zx+H2tXJktb2exQ9I1w6/hnkfnXfGqt0eVUpNPU+XvAnjvXbu9bw9q7tf2V0jIyS/MV4+8CfSvXPh/wDBzUvFg80W7pYxNnLfKZCOgB/u+te7eEP2cvB3hmb7QLp7ncMEkYYjuM9s+1fTFj9hsLVLSxiEUcYCqFGBgUX0MUtT56t/gPZ21o+5xHJKuHMfBA9Ae2K8o8Q/CKfQS50e28zOcu5yce2eTn8q+1Lu8QqRvwPSuJ1GTzFbKlx9aOZIdtLM/NjxHaazYyPZvH9ijbO7Z8zt9W4Arz1IbSymV4gN+fvN87Z+nQV9tfFDTdFubCWWa0YSKDgpwf5Gvh+9EUN+TGzFVbowqXsVFWdht3fzx3a3EeVZWBLNyeDng9hX0KkK3VjvA4kTP5jNfOciSzHdjjtX0N4TuPtmhWsj9owpHuvFeZVb5k0diSseI6uNjOX45rKtpyzAHn3Peuq8W232e/uIz0DHH0PNedW0pWXy16g5BNdL1VzBne2GnTXx3AhVFWbixUbljbcVHPrVTR9QNq4En3JOvsa0bveZVmXATrz6Vm99QjKz2L+m6aGbbL94Llj/AEran0W3MLXMi5xjhunPFN0maO8LSxsCXOCPTFegW1gk8flsu5W4IPINck5N6M65ONvc2POxpBgBjVRIvO1m6xjH8PtmsybzLfMkUmVUfMQv9a9eTwLNLLhZAsJPyg5JGfTPH0qvrnw+urKzEWk8Iww4bnP4HiuPCU8RKb9vP3fIipyOyp2uf//T/PN7mWSJYZHJVegqzp7RZkScgqRlQ394dDXqOofCDVI03abdQ3J/u5KP+R/xrjb34f8AiuyB82xlJ/2RuH6U1UW5i4rZGD9nMkXlOVVs7gcjHPXpXo/ww0vd4otFkfPlBpdoIK8Dg15dJY31m+LqCSMjP31Ir2f4MJJJqF3dSn5YY1VeOhY//WrSEuqM2tLM+xNLXDM5OeBXQq/OK5zSpEkgLIeM1qPuZCgYrn+IdRWD0C+upovMEBdjwOtMj3Snzp+B/Cp7e596xLVHMhR5nmjQ5JfHJ9OMdK1JZSqMB1rPZFKz3OV1C4bzZI42OwE4A6V45481u9svJiifnG4kCvWbs/vpAOtea+L9Bk1Zo1giaSUbQCKIy2uaONzyePxd4gaTEd1IPoxrStvE/im6nWGG6lznHBPWvb/CvwKy6XWsSERnDGPow9q9t0X4b+E9GPmW1mrSAk7n5611dDO9j5N0m88d3NyLdZZmO4qeM/jXq/h3wl8Qr65VNUkYQ5yWOBxX0na6XZQPvigjRvUKM1uRRogJqWi7nmFn8M9Imnhu9XU3M0PMeTgITwSPrXqVjp1taQiK2jCKvTApfMUfd61Kk5FToFmy2IuATVhUBXiqizE9aXzSDxSbHYv5AqxuG2swSAjg0NcIq/M3SkUPkZ5G8taoTzLGCgqG51JVHynBrCmunlINRzWNFG5qpLu61YUCsuENjNWGuvLFNStuNq5pGVIxgmqct3Go4P0rFn1Adc1yt5qjBm5qXMFG5013qbJwpzXLzanuLqxyM5z9azU1AsDI54rCvL+LaWU471y1JnRCNjQ0zULmSdoecI5yfbNepWN4zxIFOQBz7V4h4bv5rjUGjtk3ZOeRwa9f0+O7M3kBODySOlY0nbU0qRN0y/MecnFWLZnk5AzxTY9NfP7w81pFo7aPYnHvXZF9WcjZnSsbclpOC3AqSK4Idcc54rMuy11MAegNW44hAfNLZHYUuYq1tS+LhmYgmroulIC5rjpLp2mKA4z0Iq7DK6Rs0jc1XOHJ3N66vAFGDWUJDKc9qybm6foe9aaMqWqt0J61g5tsuMLI8p13TkkvZFBBJPQ1SgtxoMcszuH3LwnXmut1jTors+YG2t2IrA0ywfzXuLtvNMZwme1YLDK/MetGtePKzh5LiHS3OramNg5ZUxgVjQfEHTPE9pdGyYo1o+xlPb0I9jXteuaRa6zYtbXkQIKfz4r418Y+CfEPgfUZb/QlaezmP74KMnaPUe3rVOly/CdqxsJpRasew6f4jklXYDkVeGqTo4dWIHfFeX+Ebya601bojjntzx611S3+44yCKuDlazPJr8vNoeq6V4uuraIJI29Seh6iu6s/ESXUYXcQT2zXzzFdIsnlgkn0robW9eL5gxFdSnoefKCWp7qwt5VLNK2frWfNp0cqZjuStebW+p3crBfMYr6Zrt9Nt3ljDSNgdcZo5r6EuK3TKd94e+2xtG5WaMjB3Ac18ufE34QQzQNcaBZMs+dx29DX2DPb70AWTHsOlYV+rRKUkYOD+lbwOZs/Mqfw9rOjbo9QgeLBx83GfpXq3w7lDaXJA3JimZfwPzD+de1eObbR7uB49kcsnJ56ivGPBSCDUb+zcBQSrqB37f0rmrwaVzeMrnJfES2EWpEjo6Kf6V4xOhSfK+vWvoX4nW6J5EoHYrXgVymH9fari7rQl36lq0nd3MTk5PT6101tJc6iq2e4IEBBI+9j0riirfeXrWmksqslxC5V16kHnNKWmwJnf6LL/ZN4FXJjY4Yn+dfQWgiJolkDAhunvXz1pOtWGpqLTVgIZ+iTDgN/veh969Y8O3MlpMlvMSCvGexB6EVxVqXOm0axaSPboYuEdRnFWnZ7iR4m6bFAz6k1X0rMrkMfkWPf+oqd45JGncNtACEV6eHlJQ5XtYIUKfNCtrfnS/A//9Typ9TjuRH/AGlAJWQ5DKdrD8RU8l3as5lgu54s9nw4/WpZPDlwkW4wsQw5ODisw6XdRoQOAp6EZo0WiOVt7liSWScFVubabjpMhH41HZxavZxO9jZWjMxw3kNtB/SoPsMo3CRQeOtdt4XtilsySKAd3rUtX2KT7o5yx8UePNOk8iHS4XhkYDe7n5T6nFM/4W34ht4ZV1fRkhlDBUSKbLMM8scjCjHTua9ZbTYJrfZI5Td3U4NcxP4Zs41Ef2gtk/ekAY49Kycn1RVkclc/HfQNJWOF9PuHPPyxFSQB3PNXn+OPh2eSO2tbO8luJUDJEiKSSe2d3Wr9x4Fg1WZDb+UwB5wgyf0r0nwx8NtE0uaPUZreIXEfKtsAI/Grg0/iRMklsO8OaLf67bRajexG3M6hyp5Iz2r06z0TTLEAiJS/ByRzkU4X8Num0YGOMVlz6lvY4P0quaPRArs6lpExkGpUuIl6muGl1UqNu7FVBqUrSYDFvpRzjUNT0f7WqgkGpIrhnOBxXLWAebG7eR3zXTxoIkyBRdj0RdQMepqUNg88VmvfKgwO1Rm6MnI6UmUbXnjHXpULXoAIFZHnk9KhaXPWk5JbFpGyb1guQcVTmuy/ANZ/mhh1p6hByelJ6lLuI+6Q1ZjXaASKjWWJBkmqNxqtvF8pbGaWxa1NeS4MY+WsG41F/mwOnGaxrnxBGpKxMCDXPT34di4yc9ulZzl2KUeppXmoDBCMdx6+lYctzLIQjHOR171G0yscDJJrKuLyKE/MeRXK5M3ULbF2a58lDuPSsmG0m1mby1k8tD94nsK5+51RryfyEyQOpFbGnSzRuiRnrxWXNFs0Ssj3Lwt4f0jR4A8I8xz1au4+1xRjKKBnviuC0a7jFgI0PzN6+tW4LyTzRBLkq3Q+h966YyUVoc8rvc7BLl5fmzUMhDsVLZrkNQ1KXTsEdM4rndQ1+e2uULMQe9N1Fsw5H0PTNixIxPpWbdXTwIJB/EcVm2ur/brYODwRXLanrp8swOeU6USmkhRi2zo7q4HmRHdtIJzj3q2sjs6xs2dw6VnW1p9qsYJJid5w/wCHpWnBZedOtxv2hOAKz1Zrp1Ipi0bKsg4JwKW+vHUGNTwAOlZmt6ilrqdvAxJyecVY1GeNIN4H3h+dYyunoaw6XOV1PVygCKTkdTWjo1wsunGQkH5jkjtXn2qtIu+Ucbs9a2fCNyX06aJmPysM/jXTCbtZmk12O21C6SPTvtKksFGPeuIvZVuLcXH3o2HIbnrXQTXSyO1mU+SRTgD2rkVhdVltHOUOQPatG7nJsYD6fFApEEYSNiThRxz1rmL22W3begx7V17MYUNmjZdeeazrmDzpOF70tthXOHm1NbJxc3H3R1+lWovHXh9mERuEDH+E8GqPinSXa32JnJP5V8oeIbKez1aWDechsj1oSbeo7pK7Pv3Rb+0u8PA4YdsV6FBdGOIKv6mvzR0TxZ4s0Fg9pIxUHoTmvpjwD8ZbLVQNP1s/Z7sdA33Wx6H19q2jHU55NPY+kLnVmgH71gD2rgNd8eWNgGSc5+lZGo+JLa5b9yVZCeCemT715z4iksr3NrcyCN25yp7Gt+W2pz7nKeN/GmlaraPbachhbOdwOAfrivMPDGqz2uqi6mL7CNpNb2q+HxabpLa8fYvfbuH5iuekm1QriDUY1A6ZUr+uDUzXOrExfKz0LxhcLrWjrJApJjYdBnGRXht7p9ynzFCv+9x/OvQtMu9bktpLWS7ilBGeHBP61z2qaPr0xJZEk9wwNZpKPus1cr6nIeUFGHYD1wc0qSpCemVbrntWiNA1UY3QAY781M3h+/chfLJ/3VY/0oun1DWxlMrbyc5Fdx4W8T3Vpfwaddt5kTEKjN1T0GfSs+PwprDxiNLOZj2O0itS08DeKWljcWTIEYHJ4PBrJ8tty4pn11oGtW1wpOQGMOCPcGtO5vFs7N5ZeftJUIp6nb1NeOeEdK1nSr6TVNbcR2wGIoM5Z29fYDv610N9rcl3cPfOcpF8kY7E+1ddCpZq+yOmrh5So8rfvSldfdqf/9XubXWtNnRdoU57VJPb6HeKd8aEn2rybwha3N/bC5kVkyejZBFd6bXygMkk1Mop7o4pK3UtHRfDsg2mMfgelD+GNEnQohZM90OKiS2AbPOK1rcGJty9PSp5VcSm+5nweFtPhwqzyEf7ZzUsvhezK7hIWHoa3DeDoygip0ntX5ePGKJQTRcajTMzT7az0qP5QM+tST6yiAnPHtVuU6a6np9K841i+gileNCFAOOK5KtZUtzppU/bSNW71vJIXk1lHWJ3bYAc9hUOkXdncP5UiK2D949a9TsrXTAiymJSRyOKVKoqmsTarT9lpI4bTLTUdSl2mNgueSeK9IsNJsrBA0vzuKle5EYGwBPYVVedjyWHNda0Wpy3ubovIlXCDAqnLfMnLHArEkukQckkismSaSV8nODScrFJI12vlafbnrWpbyAr1rmIIASMnoetajzLbLknrWSelzZo1zNt5qCW6C8luPauYutZCHaOawZ9YZgQOM980cwKPc7o36oM7hTJNQKjeWBB9K87bVJFGCd38qqNqc2MZwKUpl8p3d5qwVeGJFcpd6k8+QWzisSW8LjljVfzR1rKUrm0VpqaZuSRgfnUnnsFG41lxb3J28gVI5MY3SGsG2akl1fGIYU9smuJ1O9luv3UZIJOSfStK7kaQkg8VlM0SszY+ZuMHiueUm9EaRjZFvTmhhjHl4J755Oa63SMyXIJIGMc+9ef2dqy3KhmwOT8td9YASRGQfeT09quC1CaaPS7cSk/upACeSOn4iuqsZ0mhRpPvMMZ/wBoV55ZNezwbkyXUY59+1bkM2rW8XnTxBI8jn39a6U0jntcv65Z3d0h8phle1c3fcO8cyjDRhVJ9R1xXaQXKzAgLznhz3FU59Iiu4ZZJuXXlfak1fVCUujItGiMVnGQc8Y9qwVigHiBGu+Uz0PQmtS1t7+G38uI7PQsMisS8tblLtGuQzHJO5BTaVgvrqeuTTWkkAVSAAMDFYP9omINEO3euW0/VFkGxCzY4weKqXeoSwXe1hgNnmqlMSh0MzWb6Q3f2sHPl108N8mpWIYkbgtef6ixcSEnLGq2g6jJFiInjPOa5k9bM6umhp65AzQqAe1UvCrG2mmtuf3g6k+lbmoMsyDaOKw7b/RrpZQcY4NNaMfNeNjeuLuSMEr1jyPfFZF3NIZY50OPUVpSqsjeYDww5rPmjbe0RHTpXVzGFjJuokS7Fyx+9gZ+taljEjk7vvZ61BJEGixJzjn6VpaZhjnHBouQ0VtT0aK5jO4Z96+WPi14Tn0qWPXoEzF9yUgdD2NfZrAGMqewzXL6ppdlq1rLp19GJIJwUdT6GumDTfvHNLax8Janqfh2Lw3YHSxN/aZL/ay+PL6/Ls/DrXESag0xG8AMOjDgiu4+JXgHVfBOpmJlaWwckwTAcY/ut6MP1rzErI4+Wt5yjpZHOoW1PRbDxHqaW4lglLSR/LLExysiHocV1MGt2uoyLFdP5DDhXY/d/wBk15/FaXOk2UGoypgPlTn0Perl2ytEt/GA8b/JKP8AaHf/AAqYyctxs7a8nu7VWZZdwXPMfp7ivONS1uV5CqttI7jjP4VYg1uSKEQyMSFPySZ5HsaxtV8qciSQASH+IDg//XpqVtwYtvq8wkBPzHPWvcPDWoabdWqGR13HqG/xr5vZWj6HrXpnw21TTrfUjbaq6LG+MFzwD71yTXM7lbI94F7p0eFMka49wc1rWuqaZGSfNTn8a6XTtM0C6hWW2EcqnkFcEVsjS9PiA2RoB9BWXLZ3saKSscimvaaPl3FyPRGP8hViLWIrmXZDFIOM5dCF4+tdYILVBlUUfQUktvDKhjBAyOcdeaFF9ATR45qesSyyyPNIcnIX0A9qw31aAqsAPyp0Gc5J6mvUI/B2jSSyyyxeYdxA3EkVtW2gadbKPs9vGmPRRTlKWsbH0v1qhzKoldpWP//W7JDFbJtQAfSqMswc4ziqs85ztz9ar7yuWPIrJ6u5xJdWbMUrLwxyKm8xlORXPx6ggOCcVoR3gc+xqnqK3dFzzXzlasLcsgwxqp5qnmo5HXuaE7F6E8tyr8EVzt94ettQfeWIyc4q/wCejNtq0rqeQelYTpxqKzNac3DVGVD4ft7WRfLJXBGSO9d/bywW0CrGSxx3rmPtAY9eanhvIwfnNFKnGOkSp1JT+Jm7NcFx71nG4YEhqkF3ARntTHeGTpitH5EpkEl5CnU4x61ntqidjz+lS3+lx3cZ8ptrEfhXMCwuUfyWBz6+tYSlbRm0Yp6nWw6oqJx96qd5qvmKUJrMawugu6PINZs9ndgeYRUOSNlGzuD3DeZkkmqk1wz8Vet9Iv5v4evQ0l7ot9AoCKSxOM+1RcrTYyzcsvyk8VB9r3nk49KW60m9hiLy8d8VhQI7ShZ/kUGk2y0kbyyF3CICxPYV3eh+E7m9Invx5cPUDu1YGnz2dogMS5b1Ndjp/iYhPIkbjt7VKQ3toT3lhZ2EZS2GAOtcHqLBifeul1HUVkclW4btXFX8lYyWhrHQ5qeV4mOxsrmothmjMiY3DoadMnylRzk8/jT7dCIyEyRmsmuxtfuaekxFouQMj5c+tdlpts0bFscHpj1rC0lMjLDBPauxtike1T3raMTGcuiO10JrZjxxs6j1rqb+aG4tGQrxjAFcxo8CrZPcHgE9avXN0kduCD24xXVbQ5G+w9PKjgUr1x0FImpRyRuo4GMD3NMjiK2TXDH7wwK4tpHF9Gu7C7v51F3EtanqVuY10oBxy2BzVS8t4gsZAzVW6nZYooVPK8/WrBugYNrYrfRkXZ51okWNbvEOSFkOOPWjVZVkmddv3TitSylhXU7iYdN351y91eouoyiQcMeMVytW3OiLdzLvoJI4uAT9Kw7F3EjA9c8D2re1OZcFg2RgVyqoyXvnBiQecdjWWzNrncQzF1+c9KJkUqAvAHJNJCgdEzxxUk6AttHQCtWjG9tCpDeFNwk6AcVfkcMQ47CsiSDIPHOaIZnRir9M4oWoPyL7lcsD0YZq3pY2ZB5wc1nMcnHocGr1q/luAO3FLW4nszoZMsmVI6VhO4EmO1aZc4PPHasWc/NweTXQpaamDXcZrGl2HiDTZNN1GJZYpBghhmvkrWfhlp/hXU/PuZC1kX6sMlPrjt719bpKyY/UVm6tp9nqVs0d2gZGGDn0NdVOV/dZhOLR8cfE3WPD0lnZaXocqy7FzIyDjPYV5tZaibeMwk7o5Mbh6Ed6908a/DWwaaR9OYK68hDwSP614JqGlXWmOY5QV56EYNdD0+Eyja1ivfIkMu+H5on5x9apNK6AKDvQ9M9qXOQVY49jUJUKeORWL1Gl2GyZPKHimRrg8ce9Wdo6fzp8cBY7R0NZjtc0dP8AEmt6KQbC6kjwcgAnH5V6Vpfxs8Q2pUagqXCjrkYP5ivMY9NZwEB/GnS6XPb4MqZXt71o30YnofTWmfG3w9d4jv4ZLcnv1Feh6Z4z8L6jhrS9jYkfdJwf1r4cWy+b2/UV0FjoM0x32zsGHPHWptHqLXc+8tNjW4tUkj53Zb8zmr4tmU7SK+M9B8UeNvDsoFlO0kaH7rDKn8D0r6X8F/Emw8ShbDVE+x34H3WPD46lT/SoaSd+hpz6XW5//9c+1hiSxzSTXSrETnism9jSOQsuQTWbLLIYjzx0Fc1+hzOPVFDUL9o5C6N36CprHxCQNspwa5a8zKzB6xmd4jlemcYNZqdjW2h7fDrsEkYwearXGsMjcHivJob+THGRg4rUhvZJCFf61pzXEonoC6ijLu3cnr9a0Ib5ccGvNkuHgO7GQe1T/wBoyKdw70XBxPSml3DcDis+W9A+62CK5y31SdvkPSo5181t2cY6Ur9UWtNzoDrnlHYzYIrRg1ZJsfPg1w62gnBaTg+1aFrp5Q5D8EUKeoWO/XU9qAZz9KmTVkMgL81yUMbBtqn8a0FhaPGSGFTLXUqKR3a3UEkQK9e9PRoZBtYAg1xcckij5eKsRXkiLxWaVyn3PSoEgEQ8vAwKhlC4AIyawNM1B5Oo69q6REBG6tLW1MmnsYt9ZLcIcgV5vq+llZcqOn5V6y0JJJY9a5DWLYhsk59qmaXU0hJ7Hm7M8QKg9Kcl8yuvPFWb9djEADNc3cT7A2ByK42rHapHSPqgPLHOKx5tQE8voO1cvdXbou9egrLhvZWlYnkAAispGisdtK4bBzgirsL+XGXfoeTXO2cxmKv69q2Xdnmjt+zHn6CmtRs7LSyiQCQnPvWtbO9xcA9mIArm0fZGEXit7T2/0iNew5rrSOZs9BvrgR28djCcBQMn1NU7ubCJED1x+VZPn+bdlj0QdKgmuCZ0j/Wqe5HWx2NxdlbJYARgDtXIzSFpgw5w1WJ7hhHj8Kyw/wAy+7USRUTsG1EyornqMCrEd20gPoBzXLFmABJ68UR3TqOOgOMUR1FoRPceRdyKOjNVK78vJlfnnn1rOvnc3JKnFRTymVFD9c9RWMt7GyQmpANGu0j/AOtWYkSy7gpxgfrV67AEan0FZ8LFCxHQ81mylsdPpDxNaEFssvDE1M8qnlfWsHTuhjBwGOa6RoEEa49K2TujFvUhkUjBFZzgbiffNazqcY/Cs+dMMcU3GwKRHuIkb8DV+OQMNwrOYYO49lpQ58sEcVntoPzN7zt0fJ5rPlPzVBHO2MNzmiRsjNaX0I0Y5ySQT3p4fKbcbuOlMHzJtNNxtx7U1J3JcUzzbxlYTFDcQn7vO30PtXzX4mlvLu6KXbBW9HGVb6Hsa+yb+NLiN0kGQev418rfEHTG0y9Khw8bngEcjNd0Jt6HNOHY8Tu4zG5iZCrZ/CqiRvnaOTnvWvduXco38JxVJ3wg3DODSloyUiNt5PzDAFWIlIYMvbrVZ9pbvzWjagqR0INZt6mitc0bSRA6luOeGFdxpuoac4W11GFXTPD4rio0VGB6g9q3ILZAvU4NQ59GaulzbHQXOi2BX7VYYKe/IP8AUUyyto1bCRlJByBng/jUdoLi3+RJMqeoPcVqQWUc06yEkEds8UpVkkKNFvQnt4p3lVo02FerA4NUdasbn7fBcaeWS5UjBH+etdvAgBCnmu28L+HYNYu2uLg4WIg4HUmsJYiyuzX2C2P/2Q==") center/cover no-repeat;
+}
+/* 扫地机 2x2：状态摘要+任务网格纵向拉伸铺满，跟摄像头/灯的 2x2 处理是同一个模式 */
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .ctrl:has(.vacuumpanel){align-items:stretch}
+/* 灯类设备 2x2：亮度条（数值在条内） + White/Color 分段控件 + 色谱面板竖向堆叠，
+   色谱面板 flex:1 吃掉剩余高度撑满卡片底部，跟摄像头 2x2 的 .cam 是同一思路 */
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .ctrl:has(.lspectrum){flex-direction:column;align-items:stretch;gap:10px}
+/* .barlabel 的 flex:1 1 auto 是给横向的 2x1 行布局用的（撑满行宽，高度另由 height:40px 锁死，
+   互不冲突）；这里容器改成纵向堆叠后同一个 flex:1 1 auto 会让亮度条也跟着色谱面板抢纵向剩余
+   空间，把条形撑高到 40px 以上，必须单独锁回 flex:0 0 auto，只让色谱面板一个人吃剩余高度 */
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .ctrl:has(.lspectrum) .barlabel{flex:0 0 auto}
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .ctrl:has(.lspectrum) .lmode{display:flex}
+:is(.plan-A, .plan-B) .card[data-size="2x2"] .ctrl:has(.lspectrum) .lspectrum{display:block;flex:1 1 auto;min-height:0}
+/* ---- 方案 B：列表卡片样式跟方案 A 完全一致（2026-09-29 第十九轮）——
+   两套方案只在"切换卡片尺寸"这一个交互上有差异（方案 A 直接循环点击，
+   方案 B 弹出底部面板选择），拖拽排序和列表卡片本身的视觉规格不应该有
+   任何区别，所以这里的变量值直接抄 .plan-A 那一份，不再保留"更紧凑一档"
+   的差异化设计（那是第十七/十八轮的阶段性结论，已被推翻） ---- */
 .plan-B{
-  --cols:3; --gap:9px; --edge:14px; --card-h:94px; --pad:10px; --radius:16px;
-  --ico:26px; --btn:22px; --fs-name:12.5px; --fs-sub:10.5px; --txt-mt:11px;
+  --cols:2; --gap:10px; --edge:10px; --card-h:120px; --pad:10px; --radius:18px;
+  --ico:40px; --btn:24px; --fs-name:16px; --fs-sub:14px; --txt-mt:16px;
+  --unit:calc((var(--card-h) + var(--gap)) / 2);
+  grid-auto-rows:var(--unit);
+  row-gap:0;column-gap:var(--gap);
 }
+.plan-B .card{min-height:0;margin-bottom:var(--gap)}
+.plan-B .card[data-size="1x0.5"]{
+  flex-direction:row;align-items:center;justify-content:space-between;padding:0 var(--pad);
+}
+.plan-B .card[data-size="1x0.5"] .ico{display:none}
+.plan-B .card[data-size="1x0.5"] .sub{display:none}
+.plan-B .card[data-size="1x0.5"] .row1{flex:0 0 auto}
+.plan-B .card[data-size="1x0.5"] .txt{margin-top:0;order:-1;flex:1 1 auto;min-width:0;margin-right:calc(var(--btn) + 6px)}
+.plan-B .card[data-size="1x0.5"] .check{
+  top:50%;bottom:auto;right:calc(var(--pad) + var(--btn) + 6px);
+  transform:translateY(-50%);
+}
+/* 2x1/2x2 的网格结构、.ctrl 展示/布局规则改用上面 :is(.plan-A, .plan-B) 的共用规则，
+   方案 B 现在会显示跟方案 A 完全同款的步进器/进度条/门锁信息/扫地机任务网格等内容——
+   自第十九轮起 .plan-B 的变量已经跟 .plan-A 完全一致（不再有"更紧凑一档"的差异化），
+   两个方案的列表卡片视觉规格没有任何区别，唯一差异只在切换尺寸的交互方式 */
 
 /* ========== toast ========== */
+/* 2026-09-29 第二十二轮：toast 改成显示在触发它的悬浮菜单（.batch-bar）正上方，
+   不再固定停在页面底部——位置靠 --toast-left/--toast-bottom 这两个 JS 写入的
+   CSS 变量单独控制，滑入/滑出动效的 translateY 分离出来，两者互不干扰 */
 .toast{
-  position:fixed;left:50%;bottom:44px;transform:translate(-50%,16px);
+  position:fixed;left:var(--toast-left,50%);bottom:var(--toast-bottom,44px);
+  transform:translateX(-50%) translateY(16px);
   background:rgba(28,29,33,.92);color:#fff;font-size:13px;
   padding:11px 20px;border-radius:22px;z-index:99999;
   opacity:0;transition:opacity .22s,transform .22s;pointer-events:none;
 }
-.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
 /* ========== 就近提示气泡（点了不支持切换的尺寸按钮时） ========== */
 .hint{
@@ -241,33 +488,6 @@ body.dragging{user-select:none;cursor:grabbing}
   clip-path:polygon(0 0,100% 0,50% 100%);
 }
 
-/* ========== 调研问卷区（占位，等你的题目） ========== */
-.survey{
-  width:100%;max-width:560px;margin-top:28px;background:#fff;border-radius:18px;
-  padding:22px;box-shadow:0 2px 12px rgba(20,22,30,.07);
-}
-.survey h2{font-size:15px;font-weight:600;margin-bottom:4px}
-.survey .tip{font-size:12px;color:#9b9ea6;margin-bottom:16px}
-.choices{display:flex;flex-direction:column;gap:10px}
-.choice{
-  border:1.5px solid #e6e8ec;border-radius:12px;padding:13px 15px;font-size:14px;
-  cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:10px;
-}
-.choice:hover{border-color:#cdd1d8}
-.choice.sel{border-color:#1c1d21;background:#f4f5f7}
-.choice .dot{
-  width:17px;height:17px;border-radius:50%;border:1.5px solid #cdd1d8;flex:0 0 auto;
-  display:flex;align-items:center;justify-content:center;
-}
-.choice.sel .dot{border-color:#1c1d21}
-.choice.sel .dot::after{content:"";width:9px;height:9px;border-radius:50%;background:#1c1d21}
-.submit{
-  width:100%;margin-top:16px;border:0;border-radius:12px;background:#1c1d21;color:#fff;
-  font:inherit;font-size:14px;font-weight:600;padding:13px;cursor:pointer;
-}
-.submit:disabled{background:#d8dade;cursor:not-allowed}
-.done{text-align:center;font-size:14px;color:#3aa76d;padding:10px 0}
-
 /* ========== 移动端 ========== */
 @media (max-width:760px){
   body{padding:12px 0 40px;background:#f5f6f8}
@@ -275,8 +495,20 @@ body.dragging{user-select:none;cursor:grabbing}
   .phone{width:100vw;height:auto;min-height:calc(100vh - 150px);border-radius:0;box-shadow:none;overflow:visible}
   .phone .notch{display:none}
   .stage{gap:16px;width:100%}
-  .survey{margin:24px 16px 0;width:calc(100% - 32px)}
   .cmp-only{display:none!important}
+  /* 移动端 .phone 高度变成 auto、随内容撑高，不再是"吸底"这个 absolute 定位
+     所依赖的固定高度容器；改成 position:fixed 直接锚定浏览器视口底部，
+     不然 .batch-bar 会跟着 .phone 的总高度走，看起来像跟随列表内容滚动 */
+  .batch-bar{position:fixed;bottom:24px}
+  /* 底部选尺寸面板是同一类问题（2026-09-29 第十九轮）：.sheet-mask/.sheet
+     桌面端靠 .phone 的 overflow:hidden 天然裁在框内、absolute 定位相对
+     .phone 没问题；移动端 .phone 变成 overflow:visible + 高度随内容撑高后，
+     遮罩/面板的 inset:0 / bottom:0 就不再对齐视口，而是对齐到"整个列表内容
+     的末尾"——滚动列表就会看到遮罩/面板出现在滚动到的位置。改成 position:fixed
+     直接相对浏览器视口定位即可，面板本身依旧贴视口底部（不像 .batch-bar 那样
+     悬浮离底 24px，它是通栏面板，天然应该贴到底） */
+  .sheet-mask{position:fixed}
+  .sheet{position:fixed;left:0;right:0;bottom:0}
 }
 </style>
 </head>
@@ -286,24 +518,13 @@ body.dragging{user-select:none;cursor:grabbing}
   <h1>Device Card Size Study</h1>
   <p class="sub">The page is in "Edit" mode: long-press to reorder cards, tap the button in the top-right corner to resize</p>
   <div class="seg" id="viewSeg">
-    <button data-view="A" class="on">Plan A · Large Cards</button>
-    <button data-view="B">Plan B · Small Cards</button>
+    <button data-view="A" class="on">Plan A · Tap to Resize</button>
+    <button data-view="B">Plan B · Pick a Size</button>
     <button data-view="C" class="cmp-only">Side by Side</button>
   </div>
 </div>
 
 <div class="stage" id="stage"></div>
-
-<div class="survey">
-  <h2>Which layout do you prefer?</h2>
-  <p class="tip">(Placeholder survey — will be replaced with the real questions)</p>
-  <div class="choices" id="choices">
-    <div class="choice" data-v="A"><i class="dot"></i>Plan A · Large cards, clearer information</div>
-    <div class="choice" data-v="B"><i class="dot"></i>Plan B · Small cards, more visible per screen</div>
-    <div class="choice" data-v="X"><i class="dot"></i>Either is fine / No strong preference</div>
-  </div>
-  <button class="submit" id="submit" disabled>Submit</button>
-</div>
 
 <div class="toast" id="toast"></div>
 
@@ -328,12 +549,110 @@ const ICONS = {
   tv:     S('<rect x="2.5" y="4" width="19" height="12.5" rx="2"/><path d="M8 20.5h8M12 16.5v4"/>'),
   fan:    S('<circle cx="12" cy="12" r="2"/><path d="M12 10c0-3.5-1-6.5 1.5-6.5S16 7 12 10zM14 12c3.5 0 6.5-1 6.5 1.5S17 16 14 12zM10 12c-3.5 0-6.5 1-6.5-1.5S7 8 10 12z"/>'),
   lock:   S('<rect x="4.5" y="10" width="15" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.3"/>'),
+  hub:    S('<circle cx="12" cy="12" r="8.5"/><path d="M12 8.5v3.2M12 11.7l3.6 2.1M12 11.7l-3.6 2.1"/><circle cx="12" cy="7.2" r="1.3" fill="currentColor" stroke="none"/><circle cx="16.2" cy="14.4" r="1.3" fill="currentColor" stroke="none"/><circle cx="7.8" cy="14.4" r="1.3" fill="currentColor" stroke="none"/>'),
 };
 
 const RESIZE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
   stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
   <polyline points="14 4 20 4 20 10"/><line x1="20" y1="4" x2="13.5" y2="10.5"/>
   <polyline points="10 20 4 20 4 14"/><line x1="4" y1="20" x2="10.5" y2="13.5"/></svg>`;
+
+const CLOSE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
+
+/* 底部批量操作胶囊菜单三个按钮的图标（2026-09-29 第二十轮），跟其余图标同一套
+   线性风格（24 视口、1.8-2 描边） */
+const SHARE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 15V3"/><path d="M8 7l4-4 4 4"/>
+  <path d="M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>
+</svg>`;
+const FAV_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 3.5l2.5 5.6 6.1.6-4.6 4.1 1.3 6-5.3-3.2-5.3 3.2 1.3-6-4.6-4.1 6.1-.6z"/>
+</svg>`;
+const ROOM_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="4" y="3" width="9" height="18" rx="1.5"/>
+  <path d="M14.5 8l5 4-5 4"/><path d="M12.5 12h7"/>
+</svg>`;
+
+/* Smart Hub 摄像头事件行：识别到的事件类型图标，颜色沿用 .ico 同一套灰色，
+   不用真实照片/头像，跟项目"没有依赖"的原则保持一致 */
+const EVENT_ICONS = {
+  pet:    S('<path d="M12 12.8c-3 0-5.4 2.1-5.4 4.7a2 2 0 0 0 3-1.7c.7-.4 1.5-.6 2.4-.6s1.7.2 2.4.6a2 2 0 0 0 3 1.7c0-2.6-2.4-4.7-5.4-4.7z"/><circle cx="6.3" cy="9.2" r="1.5"/><circle cx="9.5" cy="6" r="1.5"/><circle cx="14.5" cy="6" r="1.5"/><circle cx="17.7" cy="9.2" r="1.5"/>'),
+  face:   S('<circle cx="12" cy="12" r="8.5"/><path d="M9 10.6h.01M15 10.6h.01M9 15c1 .8 2 1.2 3 1.2s2-.4 3-1.2"/>'),
+  motion: S('<path d="M13 3 5 13h6l-2 8 8-10h-6l2-8z"/>'),
+  car:    S('<path d="M5 16V12.5C5 11.7 5.6 11 6.4 11H8.5L10 9H14L15.5 11H17.6C18.4 11 19 11.7 19 12.5V16"/><path d="M4 16h16"/><circle cx="7.5" cy="16" r="1.5" fill="currentColor" stroke="none"/><circle cx="16.5" cy="16" r="1.5" fill="currentColor" stroke="none"/>'),
+};
+
+/* Smart Hub 存储用量条内、文案前面的小图标，参考截图画的极简硬盘/存储符号 */
+const STORAGE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="3" y="6" width="18" height="12" rx="3"/>
+  <path d="M3 10.5h18"/>
+  <circle cx="16.5" cy="8.2" r="0.9" fill="currentColor" stroke="none"/>
+</svg>`;
+
+/* 亮度条文案前的小太阳图标，跟 STORAGE_ICON 同一套线性风格（圆点+射线） */
+const SUN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="4.2"/>
+  <path d="M12 2.8v2.6M12 18.6v2.6M4.5 4.5l1.8 1.8M17.7 17.7l1.8 1.8M2.8 12h2.6M18.6 12h2.6M4.5 19.5l1.8-1.8M17.7 6.3l1.8-1.8"/>
+</svg>`;
+
+/* SF Symbols "snowflake" 的简化描摹：三条过圆心的主轴 + 每个枝头一对小分叉 */
+const SNOWFLAKE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="12" y1="2.5" x2="12" y2="21.5"/>
+  <line x1="4.8" y1="7.25" x2="19.2" y2="16.75"/>
+  <line x1="4.8" y1="16.75" x2="19.2" y2="7.25"/>
+  <path d="M12 6.5 9.7 5M12 6.5 14.3 5M12 17.5 9.7 19M12 17.5 14.3 19"/>
+  <path d="M8.1 9.4 5.6 9.9M8.1 9.4 6.9 7.1M15.9 14.6 18.4 14.1M15.9 14.6 17.1 16.9"/>
+  <path d="M8.1 14.6 6.9 16.9M8.1 14.6 5.6 14.1M15.9 9.4 17.1 7.1M15.9 9.4 18.4 9.9"/>
+</svg>`;
+
+/* 电池+闪电，门锁/扫地机头部 .sub 共用，数据驱动决定是否显示 */
+const BATTERY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="2.5" y="7" width="16" height="10" rx="2.5"/>
+  <path d="M20.5 10v4"/>
+  <path d="M11.5 9.5 9 13h3l-2.5 3.5"/>
+</svg>`;
+
+/* 门锁"上次操作"行的时钟图标 */
+const CLOCK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>
+</svg>`;
+
+/* 门锁"门状态"行的门图标 */
+const DOOR_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="5" y="3" width="14" height="18" rx="1.5"/><circle cx="14.5" cy="12" r="1" fill="currentColor" stroke="none"/>
+</svg>`;
+
+/* 扫地机"休息中"状态的 zzz 图标 */
+const ZZZ_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4 6h7l-7 9h7"/><path d="M14 4h6l-6 7h6"/>
+</svg>`;
+
+/* 扫地机任务按钮图标：清扫全屋 / 整个家 / 自定义任务（后两者共用同一把刷子图标） */
+const FLAG_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M5 3v18"/><path d="M5 4h11l-2.5 3.5L16 11H5"/>
+</svg>`;
+const HOME_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3.5 11 12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/>
+</svg>`;
+const BRUSH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M14 4 20 10 10 20H6v-4z"/><path d="M12.5 5.5l6 6"/>
+</svg>`;
+const TASK_ICONS = { flag:FLAG_ICON, home:HOME_ICON, brush:BRUSH_ICON };
 
 /* sizes：该设备类型支持切换到的尺寸集合（宽x高，单位=半格），顺序不重要，
    点击 ⤢ 按钮时按 SIZE_ORDER 的顺序循环、跳过不支持的档位。
@@ -343,29 +662,55 @@ const RESIZE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
    ctrl:"toggle" 用 on 表示开关状态，ctrl:"slider" 用 pct(0-100) 表示进度条填充比例，
    state 是两者共用的展示文案。 */
 const DEVICES = [
-  { icon:"bulb",    name:"Living Room Light", sub:"Living Room",     sizes:["1x0.5","1x1"] },
-  { icon:"ac",      name:"Living Room AC",    sub:"Living Room",     sizes:["1x0.5","1x1","2x1"], ctrl:"stepper", val:"25°❄" },
-  { icon:"tv",      name:"TV",                sub:"Living Room",     sizes:["1x1","2x1"], ctrl:"toggle", on:true, state:"Playing" },
+  { icon:"bulb",    name:"Living Room Light", sub:"Living Room",     sizes:["1x0.5","1x1","2x1","2x2"], ctrl:"light", pct:65, lmode:"color" },
+  { icon:"ac",      name:"Living Room AC",    sub:"Living Room",     sizes:["1x0.5","1x1","2x1"], ctrl:"stepper", val:"25°" },
+  { icon:"tv",      name:"TV",                sub:"Living Room",     sizes:["1x0.5","1x1"] },
   { icon:"curtain", name:"Curtains",          sub:"Living Room",     sizes:["1x0.5","1x1"] },
-  { icon:"robot",   name:"Robot Vacuum",      sub:"Living Room",     sizes:["1x0.5","1x1","2x1","2x2"], ctrl:"toggle", on:true, state:"Cleaning" },
-  { icon:"speaker", name:"Smart Speaker",     sub:"Master Bedroom",  sizes:["1x1","2x1"], ctrl:"toggle", on:true, state:"Playing" },
-  { icon:"camera",  name:"Front Door Camera", sub:"Entryway",        sizes:["1x1","2x2"], ctrl:"toggle", on:true, state:"Recording" },
-  { icon:"purify",  name:"Air Purifier",      sub:"Master Bedroom",  sizes:["1x1","2x1","2x2"], ctrl:"slider", pct:70, state:"70% · AQI Good" },
-  { icon:"humid",   name:"Humidifier",        sub:"Master Bedroom",  sizes:["1x1"] },
+  { icon:"robot",   name:"Robot Vacuum",      sub:"Living Room",     sizes:["1x1","2x2"], ctrl:"vacuum", battery:100, state:"Taking a break…",
+    tasks:[
+      {icon:"flag", label:"Clean Everywhere"},
+      {icon:"home", label:"Whole Home"},
+      {icon:"brush",label:"Custom Name"},
+      {icon:"brush",label:"Task Name12 31231 231 2312..."},
+      {icon:"brush",label:"Custom Task"},
+      {icon:"brush",label:"Custom Task"},
+    ] },
+  { icon:"hub",     name:"Smart Hub",         sub:"Master Bedroom",  sizes:["1x0.5","1x1","2x1"], ctrl:"hub", pct:62, state:"4.0GB Available",
+    events:["pet","face","motion","car"] },
+  { icon:"camera",  name:"Front Door Camera", sub:"Entryway",        sizes:["1x1","2x2"], ctrl:"cam" },
+  { icon:"purify",  name:"Air Purifier",      sub:"Master Bedroom",  sizes:["1x0.5","1x1"] },
+  { icon:"humid",   name:"Humidifier",        sub:"Master Bedroom",  sizes:["1x0.5","1x1"] },
   { icon:"fan",     name:"Circulator Fan",    sub:"Study",           sizes:["1x0.5","1x1"] },
   { icon:"plug",    name:"Balcony Outlet",    sub:"Balcony",         sizes:["1x1"] },
-  { icon:"lock",    name:"Smart Lock",        sub:"Entryway",        sizes:["1x1","2x1"], ctrl:"toggle", on:true, state:"Locked" },
+  { icon:"lock",    name:"Smart Lock",        sub:"Entryway",        sizes:["1x0.5","1x1","2x1"], ctrl:"lock", state:"Locked",
+    doorState:"Door is Closed", lastOp:"2025/9/10 17:02", battIcon:true },
 ];
 
 /* ---------- 渲染一台手机 ---------- */
 function cardHTML(d, i){
   let inner = "";
-  if(d.ctrl === "slider"){
-    inner = `<div class="bar"><i style="width:${d.pct}%"></i></div><div class="val">${d.state}</div>`;
-  } else if(d.ctrl === "stepper"){
-    inner = `<div class="step">−</div><div class="stepval">${d.val}</div><div class="step">+</div>`;
-  } else if(d.ctrl === "toggle"){
-    inner = `<div class="switch${d.on ? " on" : ""}"><i></i></div><div class="val">${d.state}</div>`;
+  if(d.ctrl === "stepper"){
+    inner = `<div class="step">−</div><div class="stepval">${d.val}${SNOWFLAKE_ICON}</div><div class="step">+</div>`;
+  } else if(d.ctrl === "cam"){
+    inner = `<div class="cam"></div>`;
+  } else if(d.ctrl === "hub"){
+    const evs = (d.events || []).map(k => `<div class="event">${EVENT_ICONS[k] || ""}</div>`).join("");
+    inner = `<div class="barlabel"><div class="fill" style="width:${d.pct}%"></div><div class="label">${STORAGE_ICON}${d.state}</div></div><div class="events">${evs}</div>`;
+  } else if(d.ctrl === "light"){
+    inner = `<div class="barlabel"><div class="fill" style="width:${d.pct}%"></div><div class="label">${SUN_ICON}${d.pct}%</div></div>
+      <div class="lmode"><div class="lmode-opt${d.lmode === "white" ? " active" : ""}">White Light</div><div class="lmode-opt${d.lmode === "color" ? " active" : ""}">Color Light</div></div>
+      <div class="lspectrum"></div>`;
+  } else if(d.ctrl === "lock"){
+    inner = `<div class="lockinfo">
+      <div class="lockrow">${CLOCK_ICON}<span>Last operation: ${d.lastOp}</span></div>
+      <div class="lockrow">${ICONS.lock}<span>${d.state}</span><i class="lockdiv"></i>${DOOR_ICON}<span>${d.doorState}</span></div>
+    </div>`;
+  } else if(d.ctrl === "vacuum"){
+    const tasks = (d.tasks || []).map(t => `<div class="vtask">${TASK_ICONS[t.icon] || ""}<span>${t.label}</span></div>`).join("");
+    inner = `<div class="vacuumpanel">
+      <div class="vstatus">${ZZZ_ICON}<span>${d.state}</span></div>
+      <div class="vtasks">${tasks}</div>
+    </div>`;
   }
   const ctrl = inner ? `<div class="ctrl">${inner}</div>` : "";
   return `<div class="card" data-i="${i}" data-size="1x1">
@@ -376,7 +721,7 @@ function cardHTML(d, i){
     <div class="row2">
       <div class="txt">
         <div class="name">${d.name}</div>
-        <div class="sub">${d.sub}</div>
+        <div class="sub">${d.sub}${d.battery != null ? `<span class="sub-batt">${BATTERY_ICON}${d.battery}%</span>` : (d.battIcon ? `<span class="sub-batt">${BATTERY_ICON}</span>` : "")}</div>
       </div>
       ${ctrl}
     </div>
@@ -402,21 +747,35 @@ function phone(plan){
         <div class="grid plan-${plan}">${DEVICES.map(cardHTML).join("")}</div>
       </div>
       <div class="batch-bar">
-        <button data-act="share">Share</button>
-        <button data-act="fav">Favorite</button>
-        <button data-act="room">Move Room</button>
+        <button data-act="share"><span class="bico">${SHARE_ICON}</span><span class="blabel">Share</span></button>
+        <button data-act="fav"><span class="bico">${FAV_ICON}</span><span class="blabel">Favorite</span></button>
+        <button data-act="room"><span class="bico">${ROOM_ICON}</span><span class="blabel">Move Room</span></button>
+      </div>
+      <div class="sheet-mask"></div>
+      <div class="sheet">
+        <div class="sheet-head">
+          <button class="sheet-close" aria-label="Close">${CLOSE_ICON}</button>
+          <span class="sheet-title">Select the card view for your device</span>
+        </div>
+        <div class="sheet-hint">Swipe left or right to preview other sizes</div>
+        <div class="sheet-track"><div class="sheet-track-inner"></div></div>
+        <div class="sheet-dots"></div>
+        <button class="sheet-confirm">Use This Card View</button>
       </div>
     </div>`;
 
   const grid = wrap.querySelector(".grid");
-  if(plan === "A") relayout(grid);
+  relayout(grid);
   enableSort(grid);
   grid.addEventListener("click", e=>{
     const btn = e.target.closest(".resize"); if(!btn) return;
     e.stopPropagation();
-    if(plan !== "A"){ toast("Resize interaction not yet implemented — pending your design"); return; }
-
     const card = btn.closest(".card");
+    if(plan === "B"){
+      openSheet(wrap, grid, card, DEVICES[+card.dataset.i]);
+      return;
+    }
+
     const device = DEVICES[+card.dataset.i];
     const next = nextSize(card.dataset.size, device.sizes);
     if(next === card.dataset.size){ hintNear(btn, "This device doesn't support this size"); return; }
@@ -426,7 +785,7 @@ function phone(plan){
   wrap.querySelector(".batch-bar").addEventListener("click", e=>{
     const btn = e.target.closest("button"); if(!btn) return;
     const label = {share:"Share", fav:"Favorite", room:"Move Room"}[btn.dataset.act];
-    toast(`Batch ${label}: not yet implemented`);
+    toast(`Batch ${label}: not yet implemented`, btn.closest(".batch-bar"));
   });
   return wrap;
 }
@@ -440,6 +799,182 @@ function nextSize(current, supported){
     if(supported.includes(cand)) return cand;
   }
   return current;
+}
+
+/* ============================================================
+   方案 B：点 ⤢ 弹出的底部尺寸选择面板。预览卡片用真实设备的数据
+   （cardHTML 生成的同一份 DOM），套上跟外面网格同款的 .plan-B 三列
+   网格变量 + grid-column/grid-row span，看起来就是这张卡片在方案 B
+   网格里变成对应尺寸后的真实样子——不是另画一套占位 UI。
+   轮播是"拖一下切一张"的 banner 手势，不是自由滚动，跟 enableSort()
+   的长按拖拽换位是两套不同的交互模型，独立实现互不干扰。
+   ============================================================ */
+function buildPreviewCard(d, i, size){
+  const div = document.createElement("div");
+  div.innerHTML = cardHTML(d, i);
+  const card = div.firstElementChild;
+  card.dataset.size = size;
+  const {w, h} = SIZE_WH[size] || {w:1, h:2};
+  /* .sheet-grid 不再是 CSS Grid（面板只展示单张卡片，不需要列表那套
+     多卡片共享网格轨道的机制），卡片宽高全靠 --pw/--ph 配合
+     .sheet-grid .card 的 calc() 公式直接算出目标像素值，--ph 是
+     SIZE_WH 里以半格为单位的高度 h 换算成"半个 d 档"的个数 */
+  card.style.setProperty("--pw", w);
+  card.style.setProperty("--ph", h / 2);
+  return card;
+}
+
+function enableSheetCarousel(viewport, inner, dots, count, startIndex){
+  // 2026-09-29 第二十一轮：0.3 的距离阈值太难触发，改成 0.18；
+  // 同时加一个"快划"判定——哪怕距离没到阈值，只要划得够快（速度超过 FLICK_V）
+  // 且方向明确（超过 FLICK_MIN 像素，排除误触/点击抖动），也当一次有效切换处理。
+  const DAMP = 0.35, THRESHOLD = 0.18, FLICK_V = 0.5, FLICK_MIN = 24;
+  let current = Math.min(Math.max(startIndex, 0), count - 1);
+  let dragging = false, startX = 0, startTx = 0, dx = 0, startTime = 0;
+
+  const dotEls = [...dots.children];
+  function paintDots(){
+    dotEls.forEach((d, i) => d.classList.toggle("active", i === current));
+  }
+  function settle(animate){
+    inner.style.transition = animate ? "transform .28s cubic-bezier(.2,.8,.2,1)" : "none";
+    inner.style.transform = `translateX(${-current * viewport.clientWidth}px)`;
+    paintDots();
+  }
+  settle(false);
+
+  function onDown(e){
+    if(e.button != null && e.button !== 0) return;
+    dragging = true; dx = 0;
+    startX = e.clientX;
+    startTx = -current * viewport.clientWidth;
+    startTime = performance.now();
+    inner.style.transition = "none";
+    viewport.setPointerCapture(e.pointerId);
+  }
+  function onMove(e){
+    if(!dragging) return;
+    dx = e.clientX - startX;
+    const width = viewport.clientWidth;
+    let raw = startTx + dx;
+    const min = -(count - 1) * width, max = 0;
+    if(raw > max) raw = max + (raw - max) * DAMP;
+    if(raw < min) raw = min + (raw - min) * DAMP;
+    inner.style.transform = `translateX(${raw}px)`;
+  }
+  function onUp(){
+    if(!dragging) return;
+    dragging = false;
+    const width = viewport.clientWidth;
+    const elapsed = Math.max(1, performance.now() - startTime);
+    const velocity = Math.abs(dx) / elapsed;
+    const isFlick = Math.abs(dx) > FLICK_MIN && velocity > FLICK_V;
+    const passedThreshold = Math.abs(dx) > width * THRESHOLD;
+    if((passedThreshold || isFlick) && dx < 0 && current < count - 1) current++;
+    else if((passedThreshold || isFlick) && dx > 0 && current > 0) current--;
+    settle(true);
+  }
+  function onDotClick(e){
+    const idx = dotEls.indexOf(e.target);
+    if(idx === -1 || idx === current) return;
+    current = idx;
+    settle(true);
+  }
+
+  viewport.addEventListener("pointerdown", onDown);
+  viewport.addEventListener("pointermove", onMove);
+  viewport.addEventListener("pointerup", onUp);
+  viewport.addEventListener("pointercancel", onUp);
+  dots.addEventListener("click", onDotClick);
+
+  return {
+    current: () => current,
+    destroy(){
+      viewport.removeEventListener("pointerdown", onDown);
+      viewport.removeEventListener("pointermove", onMove);
+      viewport.removeEventListener("pointerup", onUp);
+      viewport.removeEventListener("pointercancel", onUp);
+      dots.removeEventListener("click", onDotClick);
+    },
+  };
+}
+
+function openSheet(wrap, grid, card, d){
+  if(wrap._sheetCarousel){ wrap._sheetCarousel.destroy(); wrap._sheetCarousel = null; }
+
+  const mask = wrap.querySelector(".sheet-mask");
+  const sheet = wrap.querySelector(".sheet");
+  const track = wrap.querySelector(".sheet-track");
+  const inner = wrap.querySelector(".sheet-track-inner");
+  const dots = wrap.querySelector(".sheet-dots");
+  const closeBtn = wrap.querySelector(".sheet-close");
+  const confirmBtn = wrap.querySelector(".sheet-confirm");
+  const sizes = d.sizes;
+  const i = +card.dataset.i;
+
+  inner.innerHTML = "";
+  dots.innerHTML = "";
+  sizes.forEach(size=>{
+    const slide = document.createElement("div");
+    slide.className = "slide";
+    const sg = document.createElement("div");
+    sg.className = "sheet-grid plan-B";
+    sg.appendChild(buildPreviewCard(d, i, size));
+    slide.appendChild(sg);
+    const label = document.createElement("div");
+    label.className = "slide-label";
+    label.textContent = size.replace("x", "×");
+    slide.appendChild(label);
+    inner.appendChild(slide);
+    dots.appendChild(document.createElement("span")).className = "dot";
+  });
+
+  /* 面板高度不该因为换了个只支持到 s/d/m 的设备就变矮——不管当前这个设备实际
+     支持到哪档，面板高度都要按"2x2"来定，用户点不同品类时面板高度不能跳来跳去。
+     预览卡片的高度是纯 CSS 公式算出来的固定值（跟设备内容无关，见 buildPreviewCard
+     旁的注释），不需要真的让 2x2 变成这个设备"可选"的一档，塞一张不计入轮播/圆点
+     的隐藏参照 slide 进来，靠它撑开 .sheet-track-inner 的 flex 自动高度即可——
+     跟"矮档位靠同一行 flex 兄弟撑高"是完全一样的机制，只是这个兄弟不可见也点不到 */
+  if(!sizes.includes("2x2")){
+    const refSlide = document.createElement("div");
+    refSlide.className = "slide slide-ref";
+    refSlide.setAttribute("aria-hidden", "true");
+    const refSg = document.createElement("div");
+    refSg.className = "sheet-grid plan-B";
+    refSg.appendChild(buildPreviewCard(d, i, "2x2"));
+    refSlide.appendChild(refSg);
+    const refLabel = document.createElement("div");
+    refLabel.className = "slide-label";
+    refLabel.textContent = "2×2";
+    refSlide.appendChild(refLabel);
+    inner.appendChild(refSlide);
+  }
+
+  const startIndex = Math.max(0, sizes.indexOf(card.dataset.size));
+  const carousel = enableSheetCarousel(track, inner, dots, sizes.length, startIndex);
+  wrap._sheetCarousel = carousel;
+
+  function close(){
+    mask.classList.remove("show");
+    sheet.classList.remove("show");
+    mask.removeEventListener("click", close);
+    closeBtn.removeEventListener("click", close);
+    confirmBtn.removeEventListener("click", onConfirm);
+    carousel.destroy();
+    if(wrap._sheetCarousel === carousel) wrap._sheetCarousel = null;
+  }
+  function onConfirm(){
+    card.dataset.size = sizes[carousel.current()];
+    relayout(grid);
+    close();
+  }
+
+  mask.addEventListener("click", close);
+  closeBtn.addEventListener("click", close);
+  confirmBtn.addEventListener("click", onConfirm);
+
+  mask.classList.add("show");
+  sheet.classList.add("show");
 }
 
 /* ============================================================
@@ -458,10 +993,10 @@ const SIZE_WH = {
   "1x0.5":{w:1,h:1}, "1x1":{w:1,h:2}, "2x1":{w:2,h:2}, "2x2":{w:2,h:4},
 };
 
-function computeLayout(sizes){
+function computeLayout(sizes, cols){
   const occupied = new Set();               // `${row}:${col}` 已占用的半格（含孤立 1×0.5 预留但不渲染的半格）
   const fits = (row, col, w, h)=>{
-    if(col + w > 2) return false;
+    if(col + w > cols) return false;
     for(let r = row; r < row + h; r++)
       for(let c = col; c < col + w; c++)
         if(occupied.has(`${r}:${c}`)) return false;
@@ -472,20 +1007,20 @@ function computeLayout(sizes){
       for(let c = col; c < col + w; c++)
         occupied.add(`${r}:${c}`);
   };
-  // 摆放游标：只按行优先顺序前进（同一行先列 0 后列 1，再换下一行），
+  // 摆放游标：只按行优先顺序前进（同一行先列 0 后列 1，再换下一行……），
   // 从游标位置开始往后找第一个放得下的格子，绝不回头找更早被跳过的格子。
   let curRow = 0, curCol = 0;
   const findSlot = (w, h)=>{
     let row = curRow, col = curCol;
     while(!fits(row, col, w, h)){
       col++;
-      if(col >= 2){ col = 0; row++; }
+      if(col >= cols){ col = 0; row++; }
     }
     return {row, col};
   };
   const advanceCursor = (row, col, w)=>{
     curRow = row; curCol = col + w;
-    if(curCol >= 2){ curCol = 0; curRow = row + 1; }
+    if(curCol >= cols){ curCol = 0; curRow = row + 1; }
   };
 
   const positions = new Array(sizes.length);
@@ -523,7 +1058,9 @@ function computeLayout(sizes){
   positions.forEach(p=> maxRow = Math.max(maxRow, p.row + p.h - 1));
   const rowUsed = [];
   for(let r = 0; r <= maxRow; r++){
-    rowUsed.push(rendered.has(`${r}:0`) || rendered.has(`${r}:1`));
+    let used = false;
+    for(let c = 0; c < cols; c++) if(rendered.has(`${r}:${c}`)) used = true;
+    rowUsed.push(used);
   }
 
   return { positions, rowUsed };
@@ -532,7 +1069,8 @@ function computeLayout(sizes){
 function relayout(grid){
   const cards = [...grid.children];
   const sizes = cards.map(c => c.dataset.size);
-  const {positions, rowUsed} = computeLayout(sizes);
+  const cols = parseInt(getComputedStyle(grid).getPropertyValue('--cols')) || 2;
+  const {positions, rowUsed} = computeLayout(sizes, cols);
   const pairStart = computePairs(sizes);
 
   // 孤立 1×0.5 卡片下方预留但没有任何卡片渲染进去的半格行，把行高收缩成 0，
@@ -720,6 +1258,7 @@ function enableSort(grid){
   let timer = null, armed = false, active = false, lock = false;
   let el = null, ghost = null, sx = 0, sy = 0, ox = 0, oy = 0, bounds = null;
   const planClass = [...grid.classList].find(c => c.startsWith("plan-"));
+  const cols = parseInt(getComputedStyle(grid).getPropertyValue('--cols')) || 2;
 
   grid.addEventListener("pointerdown", e=>{
     if(e.button != null && e.button !== 0) return;
@@ -783,7 +1322,7 @@ function enableSort(grid){
       // 触点纵坐标找到目标行带（见 computeRowBand 注释）；行带天然就是换位
       // 单位，不存在"命中的那一张"和"应该整体换位的一整行"不一致的问题，
       // 单侧真空白的行也一并覆盖，不用再额外兜底。
-      const { positions } = computeLayout(sizes);
+      const { positions } = computeLayout(sizes, cols);
       const band = computeRowBand(kids, positions, y);
       if(!band || band.includes(el)) return;
       over = band[0];
@@ -803,7 +1342,7 @@ function enableSort(grid){
         // 空着，没有一个天然归属的卡片可以挂占位块）。兜底：按算法真实算出来的
         // 网格坐标，反推这一行仅有的那张卡片（或那一对堆叠的 s），只要触点落在
         // 这一行的高度范围内（不分左右列），就算命中它。
-        const { positions } = computeLayout(sizes);
+        const { positions } = computeLayout(sizes, cols);
         over = findRowGapTarget(grid, kids, positions, pairStart, x, y);
       }
       if(!over || over === el) return;
@@ -822,7 +1361,7 @@ function enableSort(grid){
       flip(grid, ()=>{
         const elIdx = kids.indexOf(el), overIdx = kids.indexOf(over);
         grid.insertBefore(el, elIdx < overIdx ? over.nextSibling : over);
-        if(grid.classList.contains("plan-A")) relayout(grid);
+        relayout(grid);
       }, el);
       setTimeout(()=>{ lock = false; }, SWAP_LOCK);
       return;
@@ -867,7 +1406,7 @@ function enableSort(grid){
         const from = kids2.indexOf(el), to = kids2.indexOf(over);
         grid.insertBefore(el, from < to ? over.nextSibling : over);
       }
-      if(grid.classList.contains("plan-A")) relayout(grid);
+      relayout(grid);
     }, el);
     setTimeout(()=>{ lock = false; }, SWAP_LOCK);
   }
@@ -932,12 +1471,22 @@ function flip(grid, mutate, skip){
 }
 
 /* ---------- toast ---------- */
+/* anchorEl 传入时，toast 定位到它正上方水平居中（2026-09-29 第二十二轮，
+   给悬浮菜单点击用）；不传时退回页面底部居中的旧行为 */
 let tTimer;
-function toast(msg){
+function toast(msg, anchorEl){
   const t = document.getElementById("toast");
   t.textContent = msg; t.classList.add("show");
+  if(anchorEl){
+    const r = anchorEl.getBoundingClientRect();
+    t.style.setProperty("--toast-left", (r.left + r.width / 2) + "px");
+    t.style.setProperty("--toast-bottom", (window.innerHeight - r.top + 10) + "px");
+  } else {
+    t.style.removeProperty("--toast-left");
+    t.style.removeProperty("--toast-bottom");
+  }
   clearTimeout(tTimer);
-  tTimer = setTimeout(()=>t.classList.remove("show"), 1800);
+  tTimer = setTimeout(()=>t.classList.remove("show"), 2000);
 }
 
 /* ---------- 就近提示气泡：紧贴触发它的按钮上方弹出，且跟随列表滚动 ---------- */
@@ -992,18 +1541,6 @@ document.getElementById("viewSeg").addEventListener("click", e=>{
   b.classList.add("on");
   render(b.dataset.view);
   window.scrollTo({top:0, behavior:"smooth"});
-});
-
-/* ---------- 问卷（占位逻辑） ---------- */
-let pick = null;
-document.getElementById("choices").addEventListener("click", e=>{
-  const c = e.target.closest(".choice"); if(!c) return;
-  document.querySelectorAll(".choice").forEach(x=>x.classList.remove("sel"));
-  c.classList.add("sel"); pick = c.dataset.v;
-  document.getElementById("submit").disabled = false;
-});
-document.getElementById("submit").addEventListener("click", function(){
-  this.outerHTML = `<div class="done">✓ Your choice has been recorded: ${pick} (not yet submitted — pending data collection setup)</div>`;
 });
 </script>
 </body>
