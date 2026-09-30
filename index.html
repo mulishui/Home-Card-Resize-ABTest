@@ -502,7 +502,7 @@ body.dragging{user-select:none;cursor:grabbing}
   /* 移动端 .phone 高度变成 auto、随内容撑高，不再是"吸底"这个 absolute 定位
      所依赖的固定高度容器；改成 position:fixed 直接锚定浏览器视口底部，
      不然 .batch-bar 会跟着 .phone 的总高度走，看起来像跟随列表内容滚动 */
-  .batch-bar{position:fixed;bottom:24px}
+  .batch-bar{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom))}
   /* 底部选尺寸面板是同一类问题（2026-09-29 第十九轮）：.sheet-mask/.sheet
      桌面端靠 .phone 的 overflow:hidden 天然裁在框内、absolute 定位相对
      .phone 没问题；移动端 .phone 变成 overflow:visible + 高度随内容撑高后，
@@ -511,7 +511,7 @@ body.dragging{user-select:none;cursor:grabbing}
      直接相对浏览器视口定位即可，面板本身依旧贴视口底部（不像 .batch-bar 那样
      悬浮离底 24px，它是通栏面板，天然应该贴到底） */
   .sheet-mask{position:fixed}
-  .sheet{position:fixed;left:0;right:0;bottom:0}
+  .sheet{position:fixed;left:0;right:0;bottom:0;padding-bottom:calc(40px + env(safe-area-inset-bottom))}
   /* 2026-09-29 第二十四轮，同日两次修正：移动端 .phone 本身就是撑满 100vw
      （见上面 .phone 规则），所以这里的视口坐标就等于"手机屏幕"坐标。
      第一版想让 toast 不再挤成两行，直接用 left:16px;right:16px 把宽度焊死

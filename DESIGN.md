@@ -1263,6 +1263,21 @@ Playwright 实测：`?plan=A`/`?plan=b` 分别只渲染对应方案且顶栏不�
 
 Playwright 复测确认两种情形都符合预期：①视口够高、内容能装下时（1200×1600），`?plan=A` 单方案视图和带 `.topbar` 的完整版都变成上下对称居中（`?plan=A` 上下留白分别 432px/468px，基本对称）；②视口很矮、内容比视口高时（1200×500），`document.scrollHeight`(784) 明显大于 `clientHeight`(500)，且初始 `scrollY` 就是 0、手机外框从正常的顶部 padding（24px）开始渲染，没有被居中裁掉顶部或需要反向滚动才能看到顶部内容。移动端视口、并排对比模式、选中卡片后浮层/toast 定位，在改动后也都逐一复测无回归。这轮改动才是解决用户实际反馈的那个问题，上面"`.stage` 补 `width:100%`"那条改动本身没错但不是本轮真正要解决的方向，保留作为一个无害的水平居中健壮性加固。
 
+## 第二十八轮：移动端浮层/面板贴底部（安全区域未适配，2026-09-30）
+
+用户报告（附两张手机截图，红圈标注）：移动端下，选中卡片后浮起的批量操作浮层（分享/收藏/更换房间）、以及方案 B 面板"Use This Card View"确认按钮，都紧贴屏幕最底部边缘，几乎没有留白；PC 端是正常的。
+
+排查：先用 Playwright 移动端视口（390×844）复测——`.batch-bar` 离视口底部量出来精确 24px，`?plan=B` 面板 `.sheet-confirm` 离底部精确 40px，都跟代码写的值完全一致，没有复现回归。转向代码审查：`<meta name="viewport">` 第 5 行带了 `viewport-fit=cover`，这个值会让页面在 iPhone 这类带 Home Indicator/刘海的设备上延伸到物理屏幕边缘（而不是留在系统安全区域内）；配套要求是页面自己用 `env(safe-area-inset-*)` 把关键内容让出安全区域。全文 `grep "env(safe-area"` 是零命中——也就是说页面选择了"延伸到边缘"，却从来没做"给底部留出安全区"这一半，`.batch-bar{bottom:24px}` 和 `.sheet{padding-bottom:40px}` 这两个 `position:fixed` 元素量的都是"距离物理屏幕底边 24px/40px"，在有 Home Indicator 的真机上，这段距离会被系统手势条覆盖/贴住，跟用户截图描述完全吻合。这个问题跟同一轮之前 `body{justify-content:center}` 那次修复没有任何关系——`position:fixed` 元素的定位基准是视口本身，不受祖先元素的 flex 属性影响，两个问题是各自独立的。
+
+Playwright 的移动端模拟默认不会给 `safe-area-inset-*` 设置非零值，这也是为什么前面两组视口测试都显示"正常"——这类问题只有真机上有物理 Home Indicator/刘海时才会触发，是这个项目里第三次遇到"自动化环境无法复现、需要真机确认"的情形（前两次是第二十五轮 iOS Safari 手势和第二十七轮的居中排查）。
+
+修复：给两处补上 `env(safe-area-inset-bottom)`，让它们在有安全区域的设备上额外把这段距离加上去，没有安全区域（PC、大多数安卓、Playwright 模拟）时 `env()` 解析成 0，效果跟修复前完全一样：
+
+- [index.html:505](index.html#L505)：`.batch-bar{position:fixed;bottom:24px}` → `.batch-bar{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom))}`
+- [index.html:514](index.html#L514)：`.sheet{position:fixed;left:0;right:0;bottom:0}` → 追加 `padding-bottom:calc(40px + env(safe-area-inset-bottom))`
+
+Playwright 复测：移动端视口下选中卡片后 `.batch-bar` 计算样式 `bottom` 仍是 `24px`（`env()` 零值 fallback，跟修复前行为一致，无回归），`?plan=B` 面板 `.sheet` 计算样式 `padding-bottom` 仍是 `40px`，`.sheet-confirm` 离视口底部依旧精确 40px。**这条修复本身在 Chromium/Playwright 环境里无法验证到"有安全区域时到底多留了多少空间"这个真正要解决的效果**（因为模拟环境的 `safe-area-inset-bottom` 恒为 0），需要用户在原来那台设备上用这次的链接重新截图确认底部浮层/按钮是否跟 Home Indicator 拉开了距离；如果还是贴着，需要追问具体机型（有没有 Home Indicator/刘海）和浏览器。
+
 ## 当前进度（2026-09-24）
 
 方案 A 的**拖拽排序 + 改尺寸补位排布**这两套核心交互逻辑，已经过用户实测反复
