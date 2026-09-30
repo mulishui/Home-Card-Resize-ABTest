@@ -42,6 +42,17 @@ body.dragging{user-select:none;cursor:grabbing}
   position:absolute;top:8px;left:50%;transform:translateX(-50%);
   width:104px;height:26px;background:#1c1d21;border-radius:14px;
 }
+/* PC 端模拟手机观感：手机上 CSS px 的实际物理尺寸比桌面显示器小（手机贴近看、
+   显示器按标准 96 CSS px/英寸渲染），同样的字号/图标搬到 PC 上会显得偏大粗犷。
+   缩小整个 .phone 模型来模拟这种"手机拿在手上看"的尺寸感；.phone-wrap 同步
+   收窄到缩放后的尺寸，避免 transform 不影响布局占位导致周围凭空多出一圈死区 */
+@media (min-width:761px){
+  /* flex-shrink:0：.phone-wrap 显式收窄到缩放后的尺寸后，.phone 自己作为
+     flex 子项默认允许被压缩，会在 transform 生效前就先被挤小一轮，
+     跟 transform:scale 叠加导致缩放两次；锁死原始 340×700 避免这个坑 */
+  .phone{transform:scale(.85);transform-origin:top center;flex-shrink:0}
+  .phone-wrap{width:289px;height:595px}
+}
 /* ========== 编辑态导航栏 ========== */
 /* statusbar/navbar/edit-tip 打包进 .phone-head 一起吸顶：桌面端 .screen 自己
    有独立高度+滚动条，.phone-head 天然不受影响；移动端 .phone 高度变成 auto，
@@ -50,14 +61,11 @@ body.dragging{user-select:none;cursor:grabbing}
 .phone-head{position:sticky;top:0;z-index:4;background:#f5f6f8;flex:0 0 auto;padding-top:20px}
 .navbar{
   flex:0 0 48px;display:flex;align-items:center;justify-content:space-between;
-  padding:0 18px;font-size:15px;
+  padding:0 18px 12px;font-size:15px;
 }
 .navbar .act{color:#8a8d96}
 .navbar .act.done{color:#1c1d21;font-weight:600}
 .navbar .title{font-size:16px;font-weight:600}
-.edit-tip{
-  font-size:11.5px;color:#9b9ea6;text-align:center;padding:0 18px 14px;line-height:1.5;
-}
 /* 胶囊形（2026-09-29 第二十轮，原来是 16px 圆角矩形）：border-radius 直接给一个
    远大于自身高度一半的值，不管内容撑高到多少都恒定是半圆两端，不用跟着内容高度
    手算圆角数值 */
@@ -214,6 +222,7 @@ body.dragging{user-select:none;cursor:grabbing}
   min-height:var(--card-h);min-width:0;display:flex;flex-direction:column;justify-content:space-between;
   box-shadow:0 1px 3px rgba(20,22,30,.06);
   position:relative;touch-action:pan-y;cursor:grab;
+  user-select:none;-webkit-user-select:none;
 }
 .card .row1{display:flex;align-items:flex-start;justify-content:space-between}
 .card .ico{
@@ -305,13 +314,19 @@ body.dragging{user-select:none;cursor:grabbing}
   font-size:14px;color:transparent;line-height:1;
 }
 .card.selected .check{background:#0a84ff;border-color:#0a84ff;color:#fff}
+/* ?select=off：见 JS 里 SELECT_ENABLED 的说明，隐藏勾选圆圈 + 确保浮层不会出现
+   （浮层本来就只在 toggleSelect 里加 .show，这里是双保险，不依赖 JS 分支写对） */
+.no-select .check,.no-select .batch-bar{display:none}
 
 /* 右上角：调整尺寸入口 */
 .resize{
-  width:var(--btn);height:var(--btn);border-radius:50%;border:0;flex:0 0 auto;
+  position:relative;width:var(--btn);height:var(--btn);border-radius:50%;border:0;flex:0 0 auto;
   background:#8e9198;color:#fff;display:flex;align-items:center;justify-content:center;
   cursor:pointer;padding:0;transition:transform .15s,background .15s;
 }
+/* 只扩大可点击热区，不改变按钮的视觉大小：用一个撑到按钮外面的透明伪元素接收点击，
+   ::before 本身没有背景/内容，不会在视觉上让按钮看起来变大 */
+.resize::before{content:"";position:absolute;inset:-6px}
 .resize:active{transform:scale(.9);background:#75787f}
 .resize svg{width:54%;height:54%;display:block}
 
@@ -363,6 +378,11 @@ body.dragging{user-select:none;cursor:grabbing}
   top:50%;bottom:auto;right:calc(var(--pad) + var(--btn) + 6px);
   transform:translateY(-50%);
 }
+/* ?select=off：勾选圆圈本来就不占 flex 布局空间（absolute 定位），margin-right 里
+   的 var(--btn) 那部分是特意给它让出来的，圆圈隐藏后这部分要还给设备名，只保留给
+   ⤢ 按钮本身的 6px 间距（⤢ 按钮自己的宽度已经由 .row1 的 flex 尺寸单独占位，不需要
+   算进这个 margin） */
+.no-select .plan-A .card[data-size="1x0.5"] .txt{margin-right:6px}
 /* 2x1/2x2 共用同一套两行网格布局：图标 + 设备名/房间 + 尺寸按钮一行，
    状态控件独占下一行。改用 CSS Grid（而不是 flex-wrap + row-gap）是因为
    多行 flex 的 gap 在"某一行内容比预期更高"时会跟 align-content 的隐式
@@ -459,6 +479,8 @@ body.dragging{user-select:none;cursor:grabbing}
   top:50%;bottom:auto;right:calc(var(--pad) + var(--btn) + 6px);
   transform:translateY(-50%);
 }
+/* ?select=off：理由同 .plan-A 那条同名规则 */
+.no-select .plan-B .card[data-size="1x0.5"] .txt{margin-right:6px}
 /* 2x1/2x2 的网格结构、.ctrl 展示/布局规则改用上面 :is(.plan-A, .plan-B) 的共用规则，
    方案 B 现在会显示跟方案 A 完全同款的步进器/进度条/门锁信息/扫地机任务网格等内容——
    自第十九轮起 .plan-B 的变量已经跟 .plan-A 完全一致（不再有"更紧凑一档"的差异化），
@@ -763,7 +785,6 @@ function phone(plan){
           <span class="title">Edit Cards</span>
           <span class="act done">Done</span>
         </div>
-        <div class="edit-tip">Long-press to reorder · Tap ⤢ to resize a card</div>
       </div>
       <div class="screen">
         <div class="grid plan-${plan}">${DEVICES.map(cardHTML).join("")}</div>
@@ -1328,7 +1349,7 @@ const SWAP_LOCK = 240; // 一次换位动画期间不再判定，单位 ms
 
 function enableSort(grid){
   let timer = null, armed = false, active = false, lock = false;
-  let el = null, ghost = null, sx = 0, sy = 0, ox = 0, oy = 0, bounds = null;
+  let el = null, ghost = null, sx = 0, sy = 0, ox = 0, oy = 0, bounds = null, scale = 1;
   const planClass = [...grid.classList].find(c => c.startsWith("plan-"));
   const cols = parseInt(getComputedStyle(grid).getPropertyValue('--cols')) || 2;
 
@@ -1348,6 +1369,13 @@ function enableSort(grid){
     ox = x - r.left; oy = y - r.top;
     const phone = el.closest(".phone");
     bounds = phone.getBoundingClientRect();
+    // .ghost 挂在 .phone 内部，会连带被 .phone 的 transform:scale（PC 端模拟手机
+    // 观感那条规则，见 CSS）再缩放一轮；getBoundingClientRect 量出来的都是缩放后
+    // 的屏幕像素，直接拿来当 .ghost 自己的 width/height/translate 会被二次缩放，
+    // 导致浮层比真实卡片小一圈、跟手位移也慢半拍。除以当前缩放比例换算回
+    // .phone 自己的本地坐标系（未缩放前的 340 宽度那套坐标），移动端 scale 恒为
+    // 1，这段换算等于不生效，不需要区分平台单独处理
+    scale = bounds.width / phone.offsetWidth;
 
     // 浮层是"外层定位容器（.ghost）+ 里面一张卡片克隆"两层结构：
     // 外层负责跟手位移/裁切，卡片克隆负责视觉样式——两者不能是同一个元素，
@@ -1357,9 +1385,9 @@ function enableSort(grid){
     ghost = document.createElement("div");
     ghost.className = "ghost";
     if(planClass) ghost.classList.add(planClass);   // 撑起 CSS 变量，也让 .plan-A .card 系列规则能命中里面的克隆卡片
-    ghost.style.width = r.width + "px";
-    ghost.style.height = r.height + "px";
-    const left0 = r.left - bounds.left, top0 = r.top - bounds.top;
+    ghost.style.width = (r.width / scale) + "px";
+    ghost.style.height = (r.height / scale) + "px";
+    const left0 = (r.left - bounds.left) / scale, top0 = (r.top - bounds.top) / scale;
     ghost.style.transform = `translate(${left0}px,${top0}px) scale(1.04)`;
 
     const ghostCard = el.cloneNode(true);
@@ -1378,7 +1406,7 @@ function enableSort(grid){
   }
 
   function move(x, y){
-    const left = x - ox - bounds.left, top = y - oy - bounds.top;
+    const left = (x - ox - bounds.left) / scale, top = (y - oy - bounds.top) / scale;
     ghost.style.transform = `translate(${left}px,${top}px) scale(1.04)`;
     if(lock) return;                       // 换位动画没跑完，先不判定
 
@@ -1499,13 +1527,13 @@ function enableSort(grid){
     if(active && ghost){
       const r = el.getBoundingClientRect();
       ghost.style.transition = "transform .2s cubic-bezier(.2,.7,.3,1)";
-      ghost.style.transform = `translate(${r.left - bounds.left}px,${r.top - bounds.top}px) scale(1)`;
+      ghost.style.transform = `translate(${(r.left - bounds.left) / scale}px,${(r.top - bounds.top) / scale}px) scale(1)`;
       const g = ghost, e2 = el;
       setTimeout(()=>{ g.remove(); e2.classList.remove("placeholder"); }, 200);
     }
     ghost = null; el = null; active = false;
     document.body.classList.remove("dragging");
-    if(tapped) toggleSelect(tapped);
+    if(SELECT_ENABLED && tapped) toggleSelect(tapped);
   }
 
   document.addEventListener("pointermove", e=>{
@@ -1617,6 +1645,14 @@ function render(view){
    跟"合在一起"的完整版（无 plan 参数）共用同一份代码，不额外开文件/项目 */
 const planParam = (new URLSearchParams(location.search).get("plan") || "").toUpperCase();
 const singlePlan = planParam === "A" || planParam === "B";
+
+/* ?select=off：临时关闭"点击卡片多选 + 底部批量操作浮层"这套交互，用于跟保留该
+   交互的版本对比；默认（不带这个参数，包括现有已分发的 ?plan=A/B 链接）维持开启，
+   不影响任何现有链接。跟 ?plan= 是两个互不干扰的独立参数，可以一起拼在同一个链接
+   上，如 ?plan=A&select=off。关闭时只是不响应"点击卡片选中"这个手势、隐藏勾选圆圈，
+   长按拖拽排序不受影响 */
+const SELECT_ENABLED = (new URLSearchParams(location.search).get("select") || "").toLowerCase() !== "off";
+document.body.classList.toggle("no-select", !SELECT_ENABLED);
 
 if(singlePlan){
   document.querySelector(".topbar").style.display = "none";

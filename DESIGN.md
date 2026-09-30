@@ -1278,6 +1278,73 @@ Playwright 的移动端模拟默认不会给 `safe-area-inset-*` 设置非零值
 
 Playwright 复测：移动端视口下选中卡片后 `.batch-bar` 计算样式 `bottom` 仍是 `24px`（`env()` 零值 fallback，跟修复前行为一致，无回归），`?plan=B` 面板 `.sheet` 计算样式 `padding-bottom` 仍是 `40px`，`.sheet-confirm` 离视口底部依旧精确 40px。**这条修复本身在 Chromium/Playwright 环境里无法验证到"有安全区域时到底多留了多少空间"这个真正要解决的效果**（因为模拟环境的 `safe-area-inset-bottom` 恒为 0），需要用户在原来那台设备上用这次的链接重新截图确认底部浮层/按钮是否跟 Home Indicator 拉开了距离；如果还是贴着，需要追问具体机型（有没有 Home Indicator/刘海）和浏览器。
 
+## 第二十九轮：删除编辑态提示语 + 新增 `select=off` 关闭多选/批量操作（2026-09-30）
+
+用户截图圈出编辑态导航栏下方的提示语"Long-press to reorder · Tap ⤢ to resize a card"（`.edit-tip`），要求删除；连带的 CSS 规则一起删掉，没有其他引用点，`.navbar` 底下直接接 `.screen`（间距靠 `.screen{padding-top:4px}`），Playwright 截图确认导航栏和第一排卡片之间的间距依旧正常，没有变得局促。
+
+另外用户提出想把 Cloudflare Pages 部署的链接接进来分发，同时希望能把"点击卡片多选 + 底部批量操作浮层（分享/收藏/更换房间）"这套交互先保留代码、但可控地关闭——用 AskUserQuestion 确认了三点：① 要关的范围是整套多选+批量操作（不是只关浮层三个按钮）；② 用 URL 参数区分，不是另存文件；③ 默认（不带参数，包括现有已分发的 `?plan=A/B` 链接）维持开启，新增一个独立参数在需要时显式关闭。
+
+实现上没有按最初"HTML/JS 注释掉代码"的字面思路做——那样没法再用 URL 动态切换；改成运行时 feature flag：新增 `SELECT_ENABLED`（读 `?select=off`，除这一个值外一律视为开启），只有一处需要真正 gate 的分支——`enableSort()` 内 `end()` 函数末尾"没触发拖拽的一次干净点击 => `toggleSelect(tapped)`"这一行，改成 `if(SELECT_ENABLED && tapped) toggleSelect(tapped)`。关闭后 `.card.selected`/`.batch-bar.show` 两个 class 永远不会被 JS 加上，`.check` 勾选圆圈和 `.batch-bar` 本身另外各加一条 `.no-select` CSS 兜底隐藏（双保险，不依赖"JS 分支一定生效"这个假设）。`.phone:has(> .batch-bar.show) .grid{padding-bottom:103px}` 这条依赖 `.show` 的规则不用改，天然不会触发。长按拖拽排序这条独立手势完全不受影响（跟点击选中共用同一个 `pointerdown`，但拖拽路径不经过 `toggleSelect`）。
+
+参数设计跟现有 `?plan=` 是两个独立维度，可以一起拼（`?plan=A&select=off`），互不干扰。Playwright 实测：不带参数/`select` 不是 `off` 时行为完全不变（点击选中、批量浮层正常出现）；`?select=off` 时点击卡片不再选中、勾选圆圈隐藏、批量浮层不出现，长按拖拽排序换位仍正确工作；控制台无报错。详见 README.md 分发链接章节。
+
+## 第三十轮：导航栏留白回归 + S 卡片关闭多选后留白浪费 + 缩放按钮热区（2026-09-30）
+
+用户用真实 Chrome（非 DevTools 模拟）本地测试 `?plan=A&select=off`，截图反馈三处问题，均已修复：
+
+**1. 导航栏跟卡片贴到一起**：第二十九轮删除 `.edit-tip` 时，我用 Playwright 截图判断"间距依旧正常"就报告完成，没有把这个判断的不确定性讲清楚——`.edit-tip` 原本自带 `padding:0 18px 14px`，是导航栏和卡片列表之间唯一的间距来源之一，删除后这部分留白也跟着消失了，实际比我截图时判断的要局促，这次由用户在真机浏览器上验证出来。
+
+第一版修复用的是 `.screen{padding-top:4px}` → `padding-top:16px`，被用户明确否掉：这个留白只存在于滚动到顶部的那一刻，一旦列表往下滚，`.screen` 的 padding 早就划过去了，标题栏和后面卡片之间该贴着还是贴着——用户的诉求是"加大标题栏本身的高度"，这样不管滚动到哪里，吸顶的标题栏底部都会自带这段缓冲。
+
+第二版我先尝试给 `.phone-head{padding-bottom:12px}`，这是基于我自己对 sticky 头部滚动机制的分析（`.phone-head` 是吸顶的那个整体，加它的底部 padding 能让缓冲跟着滚动持续存在），但没有先跟用户确认就写了。用 AskUserQuestion 追问后，用户给出的实际诉求更直接："是内下边距加大，现在是 0 吧？要改成 12，栏本身自适应变高"——问题根源单纯是 `.navbar` 自己的下内边距是 0（`.edit-tip` 删除前，视觉缓冲其实是那条提示语自己的 padding 在顶，不是 `.navbar` 的），跟 sticky 滚动机制本身无关。
+
+最终修复（[index.html:51-54](index.html#L51-L54)）：`.navbar` 的 `padding` 从 `0 18px` 改成 `0 18px 12px`。`.navbar` 本身不在任何 flex 容器里（它是 `.phone-head` 的子元素，`.phone-head` 不是 flex 容器），高度完全由内容+内边距撑出来（block 布局下天然"自适应变高"），所以只加 `padding-bottom` 就够了，不需要额外改 `flex-basis` 之类的属性。Playwright 实测：`.navbar` 高度从原来的约 19px 涨到 31px（内容行高不变，纯靠新增的 12px 底部内边距撑高），且这个高度在滚动到任意位置时都保持 31px（用 Kitten Monitor 2×2 复现滚动场景验证），标题栏底部到下一张卡片之间稳定留有缓冲，不再随滚动位置消失。
+
+**教训**：（1）涉及间距这类主观视觉判断，我自己"看着还行"不能代替用户的真实确认；（2）我自己对底层机制（sticky 滚动裁切）的正确分析，不能替代去确认用户真正想要的具体改法——`.phone-head{padding-bottom:12px}` 那版在技术上是"能达到类似效果"的合理方案，但不是用户实际要的那个改法，多写了一次不必要的猜测性实现；遇到这种表述可能对应多种实现方式的反馈，应该先问清楚具体要改哪里，而不是先按自己的理解写一版再等用户反馈对不对。
+
+**2. `select=off` 时 S（1×0.5）卡片没有释放勾选圆圈让出的空间**：`.plan-A/.plan-B .card[data-size="1x0.5"] .txt{margin-right:calc(var(--btn) + 6px)}` 这个 `margin-right` 是专门给绝对定位的 `.check` 勾选圆圈让位的（`.check` 不参与 flex 布局，不会自动避让文本），`var(--btn)` 部分对应圆圈自身宽度、`6px` 是圆圈和 ⤢ 按钮之间的间隙；⤢ 按钮本身的空间是 `.row1{flex:0 0 auto}` 自己在 flex 布局里占的，不需要算进这个 margin。`.no-select` 生效时勾选圆圈被隐藏（`display:none`），但这个 `margin-right` 没有跟着变化，导致设备名区域一直空出一整个圆圈的宽度，"Living Room Light"这类稍长的名字会被截断成"Living R.."。修复：新增覆盖规则，`.no-select` 下把 S 卡片的 `margin-right` 收到只保留给 ⤢ 按钮的 6px 间隙：
+```css
+.no-select .plan-A .card[data-size="1x0.5"] .txt{margin-right:6px}
+.no-select .plan-B .card[data-size="1x0.5"] .txt{margin-right:6px}
+```
+Playwright 实测：`select` 开启时 S 卡片 `margin-right` 计算值 30px（24+6）、"Living Room Light"被截断；`select=off` 时 `margin-right` 降到 6px、同一设备名不再截断。
+
+**3. ⤢ 缩放按钮热区扩大（不改变视觉大小）**：用户明确要求只放大可点击范围，不放大按钮本身的显示效果。用 `::before` 伪元素实现：给 `.resize{position:relative}`（不影响其在 flex 布局里的位置和尺寸），追加 `.resize::before{content:"";position:absolute;inset:-6px}`——这个伪元素没有背景色、没有内容，纯粹用来接收点击/触摸事件，视觉上完全不可见，按钮本身仍是原来的 `var(--btn)`（24px）大小，但实际可点击区域向四周各扩出 6px（约 36×36px）。Playwright 实测按钮渲染尺寸维持 24×24px 不变，`::before` 的 `inset` 计算值确认是 `-6px`。
+
+三处修复都用同一批 Playwright 脚本复测过桌面并排对比模式和默认（`select` 开启）的移动端视图，截图确认无回归，控制台无报错。
+
+## 第三十一轮：PC 端模拟手机观感（2026-09-30）
+
+用户实测反馈里追加的另一个疑问："为什么 PC 端看这个 Demo 会感觉文本、图标什么的都很大...手机上看就正常"，用户明确要求不只是解释原因，还要想办法模拟"在手机上看"的效果。
+
+**根因**：CSS 像素在移动端和桌面端的物理尺寸映射不同。以 iPhone 为例，390 CSS px 对应约 71.5mm 物理宽度，1 CSS px ≈ 0.183mm；普通桌面显示器在系统 100% 缩放下，浏览器按标准 96 CSS px/英寸渲染，1 CSS px ≈ 0.264mm，比手机上大约 44%。`.phone` 模型（340×700 CSS px）和里面的字号/图标数值本身没有问题，只是同一套 CSS px 搬到桌面显示器上物理尺寸天然更大，这不是"数值设计错了"，是两类设备对 CSS px 的默认物理映射本就不同。
+
+**方案**：用户明确选择"先按经验值做一版看效果，再微调"（不预先按物理公式精算比例——精算还牵涉手机贴近看、电脑距离远看的视角补偿，理论值不一定等于实际观感）。在桌面端（`min-width:761px`，跟现有移动端 `max-width:760px` 断点互补）给 `.phone` 加 `transform:scale(.75)` 整体缩小。
+
+实现时踩了一个坑：`.phone-wrap`（`.phone` 的父级 flex 容器，`display:flex;flex-direction:column;align-items:center`）需要同步收窄到缩放后的尺寸（255×525），否则 `transform` 不影响布局占位，会导致 `.phone` 视觉变小但周围凭空多出一圈死区。但直接给 `.phone-wrap` 设置 `height:525px` 会产生连环 bug：`.phone` 作为 flex 子项默认允许被压缩（`flex-shrink` 默认值 1），比自己偏好尺寸小的容器高度会先把未缩放的 `.phone` 压小一轮（700px 被压到 525px），再叠加 `transform:scale(.75)`，实际渲染出 393.75px（525×0.75），缩放效果加倍。Playwright 实测量出这个数值不对后定位到根因，修复是给 `.phone` 加 `flex-shrink:0` 锁死原始 340×700 的布局尺寸，缩放完全交给 `transform` 一步到位。
+
+Playwright 实测：桌面端 `.phone` 渲染尺寸精确 255×525（=340×700 的 75%）；移动端视口不受影响（`.phone` 仍是原尺寸，media query 互斥生效）；桌面并排对比模式下两台手机同步缩小、间距正常、无重叠；缩放后交互功能正常（点击 ⤢ 缩放按钮触发尺寸切换、点击卡片触发批量选中浮层），控制台无报错。
+
+**待用户看截图后按观感确认是否需要调整缩放比例**（当前 0.75 是经验值，不是精算结果）。
+
+### 追加：`transform:scale` 引入的拖拽浮层二次缩放 bug
+
+用户实测截图反馈"这个方案会有 Bug"：桌面端拖动卡片时，拖拽浮层（`.ghost`）渲染得比真实卡片明显偏大、位置也对不上手指/鼠标落点，底下被拖走的原卡片（半透明占位）从浮层旁边露了出来。
+
+**根因**：`enableSort(grid)` 里的 `.ghost` 元素是 `phone.appendChild(ghost)` 挂在 `.phone` 内部的。它的宽高（来自 `el.getBoundingClientRect()`）和位置（`translate()` 的 x/y，来自指针坐标与 `getBoundingClientRect()` 差值）全部是**屏幕空间的实际像素值**——这些值本身是对的，但 `.ghost` 是刚被 `transform:scale(.75)` 缩小的 `.phone` 的后代元素，直接把屏幕空间像素赋给 `.ghost` 自己的 CSS `width`/`height`/`transform:translate()`，会被 `.phone` 的 `scale(.75)` 二次缩放——浮层实际渲染成了目标尺寸的 0.75×0.75，指针每移动的真实像素也只体现出 0.75 倍的浮层位移，越拖越跟不上手。移动端没有这个问题（`.phone` 没有 `transform`，等效缩放系数天然是 1）。
+
+**修复**：在 `start()` 里量出 `.phone` 当前的真实缩放系数 `scale = bounds.width / phone.offsetWidth`（移动端恒为 1，桌面端为 0.75），把所有要赋给 `.ghost` 本地 CSS 属性的屏幕空间像素值（`start()`/`move()`/`end()` 三处的宽高和 `translate()` 坐标）都先除以这个 `scale`，换算回 `.phone` 自己未缩放前的本地坐标系再赋值，抵消掉祖先元素 transform 造成的二次缩放。拖拽判定用的 `fx`/`fy`（相对目标格子宽高的比例）是同一坐标系分子分母的比值，不受这个 bug 影响，未改动。
+
+Playwright 实测：`verify_drag_scale.js` 确认浮层宽高现在精确等于真实卡片尺寸 ×1.04（即代码里刻意加的"拿起时轻微放大"效果，如 116.25×1.04=120.9，实测值一致），鼠标移动 55px 浮层也精确跟随移动 55px（修复前只会移动 41.25px，即 55×0.75）；`verify_drag_screenshot.js` 完整跑了一次桌面端拖拽全流程并截图（`/tmp/drag_fixed.png`，已用 Read 工具人工查看确认浮层大小、位置正常,不再有偏大/错位/底层卡片透出的现象),拖放后卡片顺序也确认按预期重排。
+
+### 追加二：缩放比例调整为 0.85 + 修复拖拽时误触发浏览器原生文本选中
+
+用户看过 0.75 缩放的截图后反馈"改成85%吧，75%太小了"，把 `.phone{transform:scale(.75)}` 改成 `scale(.85)`，`.phone-wrap` 同步从 255×525 改成 289×595（=340×700 的 85%）。
+
+同一条反馈里用户还发了一张截图，显示拖拽卡片时好几张卡片的文字（设备名、房间名）变成了蓝色选中高亮，问"有什么办法减少这种拖动时变成选中文本的操作"。根因：`enableSort()` 里只有在长按计时器（`HOLD_MS`=180ms）到点、真正判定为"进入拖拽"后才会执行 `document.body.classList.add("dragging")`（触发 CSS `body.dragging{user-select:none}`）；在这 180ms 的等待窗口内，如果鼠标有轻微位移（远小于 `MOVE_TOL`=6px 触发"放弃拖拽"的程度，但足以被浏览器判定为一次文本选中拖拽手势），浏览器原生的"按下鼠标拖拽选中文字"手势会抢先生效，因为此时卡片上的文字节点还没有被禁止选中。修复：给 `.card` 基础规则直接加上 `user-select:none;-webkit-user-select:none`，从按下的第一刻起卡片上的文字就不可选中，不依赖等到 `dragging` 状态才生效。
+
+Playwright 实测：模拟真实场景（按下后小幅抖动位移、等待超过 180ms 再继续移动），`window.getSelection().toString()` 全程为空字符串，不再产生文本选中；`.phone` 桌面端渲染尺寸精确 289×595，移动端不受影响；截图确认卡片视觉效果比 0.75 更接近真实手机观感、无回归。
+
 ## 当前进度（2026-09-24）
 
 方案 A 的**拖拽排序 + 改尺寸补位排布**这两套核心交互逻辑，已经过用户实测反复
