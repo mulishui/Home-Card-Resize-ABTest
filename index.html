@@ -1613,15 +1613,24 @@ function render(view){
   else stage.append(phone(view));
   stage.querySelectorAll(".batch-bar").forEach(equalizeBatchBar);
 }
-render("A");
+/* ?plan=A / ?plan=B：单方案分发链接，只看这一个方案、不需要标题/说明/切换条，
+   跟"合在一起"的完整版（无 plan 参数）共用同一份代码，不额外开文件/项目 */
+const planParam = (new URLSearchParams(location.search).get("plan") || "").toUpperCase();
+const singlePlan = planParam === "A" || planParam === "B";
 
-document.getElementById("viewSeg").addEventListener("click", e=>{
-  const b = e.target.closest("button"); if(!b) return;
-  document.querySelectorAll("#viewSeg button").forEach(x=>x.classList.remove("on"));
-  b.classList.add("on");
-  render(b.dataset.view);
-  window.scrollTo({top:0, behavior:"smooth"});
-});
+if(singlePlan){
+  document.querySelector(".topbar").style.display = "none";
+  render(planParam);
+} else {
+  render("A");
+  document.getElementById("viewSeg").addEventListener("click", e=>{
+    const b = e.target.closest("button"); if(!b) return;
+    document.querySelectorAll("#viewSeg button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on");
+    render(b.dataset.view);
+    window.scrollTo({top:0, behavior:"smooth"});
+  });
+}
 </script>
 </body>
 </html>
