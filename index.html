@@ -79,12 +79,9 @@ body.dragging{user-select:none;cursor:grabbing}
    也置灰"——常规态下反正整体 opacity:0，这条规则本来就不生效 */
 .phone.editing .navbar .act.done:not(.dirty){color:#b9bbc1;pointer-events:none}
 .navbar .title{font-size:16px;font-weight:600}
-/* 胶囊形（2026-09-29 第二十轮，原来是 16px 圆角矩形）：border-radius 直接给一个
-   远大于自身高度一半的值，不管内容撑高到多少都恒定是半圆两端，不用跟着内容高度
-   手算圆角数值 */
-/* 2026-09-29 第二十四轮：改成自适应宽度、水平居中（不再撑满 left/right:12px 的
-   整行宽度），按钮之间固定 24px 间隔靠 flex gap 实现，不再依赖 space-around 把
-   间距摊到整条宽度上，所以 button 自己也不再需要横向 padding 来撑间距 */
+/* 胶囊形：border-radius 直接给一个远大于自身高度一半的值，不用跟着内容高度手算圆角数值 */
+/* 自适应宽度、水平居中，按钮间隔靠 flex gap 固定 24px，不依赖 space-around 摊开间距，
+   button 自身也不需要横向 padding 撑间距 */
 .batch-bar{
   position:absolute;left:50%;bottom:24px;z-index:5;
   background:#fff;border-radius:999px;box-shadow:0 4px 16px rgba(20,22,30,.15);
@@ -95,7 +92,7 @@ body.dragging{user-select:none;cursor:grabbing}
 .batch-bar.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
 /* 图标（24px）+ 文案上下结构；文案 10px、颜色跟卡片房间名（.sub）同款浅灰，
    图标用更深的颜色跟文案拉开层次，是常见的"深色图标+浅色说明文字"底部菜单配色。
-   上下留白由 .batch-bar 自己的 8px padding 撑出（2026-09-29 第二十二轮） */
+   上下留白由 .batch-bar 自己的 8px padding 撑出 */
 .batch-bar button{
   background:none;border:0;padding:0;
   display:flex;flex-direction:column;align-items:center;gap:4px;
@@ -122,18 +119,16 @@ body.dragging{user-select:none;cursor:grabbing}
   user-select:none;-webkit-user-select:none;
 }
 .sheet.show{transform:translateY(0);pointer-events:auto}
-/* 关闭按钮和标题不共用一行（2026-09-29，用户截图标注纠正过）：改成纵向排列，
-   关闭按钮在上、靠右对齐（align-self:flex-end），标题在下，两者间固定 8px
-   （flex 的 gap） */
+/* 关闭按钮和标题不共用一行：改成纵向排列，关闭按钮在上、靠右对齐（align-self:flex-end），
+   标题在下，两者间固定 8px（flex 的 gap） */
 .sheet-head{
   display:flex;flex-direction:column;gap:8px;
   padding:0 18px 4px;
 }
 .sheet-title{font-size:20px;font-weight:600;letter-spacing:.2px}
-/* 滑动提示语，跟提示语/尺寸文案统一成房间名文本同色 #a8abb3（2026-09-29 用户
-   截图标注）；标题到提示语紧凑的 4px（上面 .sheet-head 的 padding-bottom），
-   提示语到卡片保留原来记录过的 16px（头部区域到卡片的间距，现在这个 16 从
-   提示语的底部量起） */
+/* 滑动提示语，跟尺寸文案统一成房间名文本同色 #a8abb3；标题到提示语紧凑的 4px
+   （上面 .sheet-head 的 padding-bottom），提示语到卡片 16px（头部区域到卡片的
+   间距，这个 16 从提示语的底部量起） */
 .sheet-hint{font-size:15px;color:#a8abb3;padding:0 18px 16px;line-height:1.4}
 .sheet-close{
   background:none;border:0;color:#8a8d96;width:22px;height:22px;padding:0;flex:0 0 auto;
@@ -142,25 +137,19 @@ body.dragging{user-select:none;cursor:grabbing}
 .sheet-close svg{width:100%;height:100%;display:block}
 .sheet-track{overflow:hidden;touch-action:pan-y}
 .sheet-track-inner{display:flex}
-/* 2026-09-29 第二十轮改了两版才定下来：第一版把视口高度做成"跟着当前这一屏卡片
-   实时变化"，被用户纠正——面板高度必须按这个设备支持的最大尺寸档位固定死，切换
-   到小档位时面板本身不能跟着变矮/变化。正确做法反而更简单，回到 flex 行容器的
-   默认机制：.sheet-track-inner 是 display:flex 的行容器，height:auto 时天然等于
-   全部 .slide 里最高的那一屏的自然高度（跟 align-items 无关，改都改不掉），這裡
-   直接利用这一点当"固定高度"——不用 JS 去量、也不用过渡动画，容器高度只由最高档
-   决定且不随左右滑动变化。矮档位的 .slide 被行容器的默认 align-items:stretch
-   拉伸到这个固定高度后，靠自己 justify-content:center 把卡片+尺寸文案这个内容块
-   在里面居中，比最高档矮多少，上下留白就多多少——这跟用户最初反馈"32 太大"的
-   32 是同一个数字来源，用户看过居中效果后明确选择保留这个居中方案（而不是让矮
-   档位也钳制成固定 16 边距），16px 只对"卡片本身占满整个固定高度"的最大档位成立 */
+/* 面板高度必须固定（按这个设备支持的最大尺寸档位），切换到小档位时面板本身不能跟着
+   变矮：.sheet-track-inner 是 display:flex 的行容器，height:auto 时天然等于全部
+   .slide 里最高的那一屏的自然高度，不用 JS 量测也不用过渡动画即可当"固定高度"用。
+   矮档位的 .slide 被行容器默认的 align-items:stretch 拉伸到这个固定高度后，靠自己
+   justify-content:center 把卡片+尺寸文案这个内容块居中，比最高档矮多少、上下留白
+   就多多少（过程见 CHANGELOG.md「第二十轮」） */
 .sheet-track-inner .slide{
   flex:0 0 100%;padding:0 10px;min-width:0;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
 }
 /* 当前档位文案，跟在卡片下面，固定 8px 间距（gap，上面已定义）；文案本身到圆点
-   指示器的 16px、圆点到确认按钮的 16px（2026-09-29 用户截图标注从 8 改成 16）、
-   按钮到面板底边的 40px 都不在这里，是 .sheet-dots/.sheet 自己的 padding，理由
-   见那两条规则旁的注释 */
+   指示器的 16px、圆点到确认按钮的 16px、按钮到面板底边的 40px 都不在这里，是
+   .sheet-dots/.sheet 自己的 padding，理由见那两条规则旁的注释 */
 .slide-label{font-size:14px;font-weight:500;color:#a8abb3;flex:0 0 auto}
 /* 不计入轮播/圆点的隐藏参照 slide（用来把面板高度撑到 2x2 档），visibility:hidden
    保留它在 flex 布局里的占位（撑高度）但完全不可见、不可点、无障碍树里也不存在 */
@@ -172,14 +161,12 @@ body.dragging{user-select:none;cursor:grabbing}
    顶部、留白全部堆在底部。改成普通 flex 容器 + 卡片显式宽高公式，让卡片
    本身的盒子刚好等于目标尺寸，不再有轨道和卡片本身尺寸不一致的问题 */
 .sheet-grid{display:flex;justify-content:center;width:100%}
-/* 面板预览卡片的宽高改用独立于真实列表列数/行轨道的固定公式（2026-09-29
-   第十九轮）——宽度：L/M（占满整行，--pw=2）上限 368px，够宽时封顶，不够宽
-   （本 demo 手机内容区远小于 368）就用 .slide 自带的 24px 左右内边距撑到底、
-   跟着容器宽度走；S/D（--pw=1，半行宽）在"L 宽度"基础上折半再减一个 --gap
-   （跟 L 是否封顶无关，统一用实际算出来的 --l-w 反推）。高度：--ph 是"半个
-   d 档"的个数（s=0.5、d/m=1、l=2），代入"d 固定 120、其余尺寸以此为基准"
-   的公式——ph 份 --card-h 加上 (ph-1) 份 --gap，ph=0.5 时公式里的负 0.5 份
-   gap 正好等价于用户给的"s = 0.5 个 d - 10"这条口算式 */
+/* 面板预览卡片的宽高用独立于真实列表列数/行轨道的固定公式——宽度：L/M（占满整行，
+   --pw=2）上限 368px，够宽时封顶，不够宽（本 demo 手机内容区远小于 368）就用
+   .slide 自带的 24px 左右内边距撑到底、跟着容器宽度走；S/D（--pw=1，半行宽）在
+   "L 宽度"基础上折半再减一个 --gap（跟 L 是否封顶无关，统一用实际算出来的 --l-w
+   反推）。高度：--ph 是"半个 d 档"的个数（s=0.5、d/m=1、l=2），代入"d 固定 120、
+   其余尺寸以此为基准"的公式——ph 份 --card-h 加上 (ph-1) 份 --gap */
 .sheet-grid .card{
   --l-w:min(368px, 100%);
   width:calc(var(--l-w) / 2 * var(--pw) - var(--gap) * (2 - var(--pw)));
@@ -196,18 +183,16 @@ body.dragging{user-select:none;cursor:grabbing}
 /* .sheet-grid .resize 隐藏后面板里不再需要给尺寸按钮/勾选圆圈留白，s（1x0.5）
    档预览卡片的文案原样继承了列表卡片专属的 margin-right（给按钮让位用的），
    面板里没有按钮，不释放这份留白会让本来空间就紧张的 s 档设备名很容易被截断
-   成省略号（2026-09-29 用户反馈）；用 .sheet-grid.plan-B（两个类）比原规则
-   .plan-B .card[...] .txt（虽然选择器数量一样多，但用户样式统一约定"越靠后/
-   越具体的规则赢"这里选特异度更高的写法保险）稳赢 */
+   成省略号；选择器写成 .sheet-grid.plan-B（两个类）是为了特异度稳赢
+   .plan-B .card[...] .txt（同样两个类，但不依赖源码顺序谁在后面） */
 .sheet-grid.plan-B .card[data-size="1x0.5"] .txt{margin-right:0}
 /* padding-top:16 是"当前档位文案到圆点"的间距，padding-bottom:16 是"圆点到确认
-   按钮"的间距（2026-09-29 用户截图标注从 8 改成 16，跟 .sheet 的
-   padding-bottom:40 一起都是截图标注的固定值） */
+   按钮"的间距，跟 .sheet 的 padding-bottom:40 一样都是固定值 */
 .sheet-dots{display:flex;justify-content:center;gap:6px;padding:16px 0 16px}
 .sheet-dots .dot{width:6px;height:6px;border-radius:50%;background:#dfe2e8;transition:background .2s}
 .sheet-dots .dot.active{background:#1c1d21}
-/* 胶囊形（2026-09-29，跟 .batch-bar 同款写法）：border-radius 直接给一个远大于
-   自身高度一半的值，不用跟着按钮高度手算圆角数值 */
+/* 胶囊形（跟 .batch-bar 同款写法）：border-radius 直接给一个远大于自身高度一半的值，
+   不用跟着按钮高度手算圆角数值 */
 .sheet-confirm{
   display:block;width:calc(100% - 36px);margin:0 18px;padding:13px;
   background:#1c1d21;color:#fff;border:0;border-radius:999px;
@@ -217,7 +202,7 @@ body.dragging{user-select:none;cursor:grabbing}
 /* 页面滚动区 */
 .screen{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-top:4px;cursor:grab}
 .screen::-webkit-scrollbar{display:none}
-/* 桌面端在空白处按住拖拽模拟滚动时的态（2026-09-29 第二十三轮，见 enableBlankScroll） */
+/* 桌面端在空白处按住拖拽模拟滚动时的态（见 enableBlankScroll） */
 .screen.blank-dragging{cursor:grabbing;user-select:none}
 
 /* ========== 设备卡片网格（A/B 差异核心） ========== */
@@ -227,9 +212,8 @@ body.dragging{user-select:none;cursor:grabbing}
   gap:var(--gap);
 }
 /* 选中卡片后浮起的 .batch-bar 会盖住列表底部：多选模式下把网格底部内边距
-   加大到"实测浮层高度 + 32px"，滚到底也不会被浮层挡住最后一张卡片；
-   2026-09-29 第二十轮把按钮改成图标+文案上下结构后浮层变高（47px → 71px），
-   这里跟着从 79px 改成 103px */
+   加大到"实测浮层高度 + 32px"（浮层实测 71px），滚到底也不会被浮层挡住
+   最后一张卡片 */
 .phone:has(> .batch-bar.show) .grid{padding-bottom:103px}
 .card{
   background:#fff;border-radius:var(--radius);padding:var(--pad);
@@ -505,11 +489,9 @@ body.dragging{user-select:none;cursor:grabbing}
 :is(.plan-A, .plan-B) .card[data-size="2x2"] .ctrl:has(.lspectrum) .barlabel{flex:0 0 auto}
 :is(.plan-A, .plan-B) .card[data-size="2x2"] .ctrl:has(.lspectrum) .lmode{display:flex}
 :is(.plan-A, .plan-B) .card[data-size="2x2"] .ctrl:has(.lspectrum) .lspectrum{display:block;flex:1 1 auto;min-height:0}
-/* ---- 方案 B：列表卡片样式跟方案 A 完全一致（2026-09-29 第十九轮）——
-   两套方案只在"切换卡片尺寸"这一个交互上有差异（方案 A 直接循环点击，
-   方案 B 弹出底部面板选择），拖拽排序和列表卡片本身的视觉规格不应该有
-   任何区别，所以这里的变量值直接抄 .plan-A 那一份，不再保留"更紧凑一档"
-   的差异化设计（那是第十七/十八轮的阶段性结论，已被推翻） ---- */
+/* ---- 方案 B：列表卡片样式跟方案 A 完全一致——两套方案只在"切换卡片尺寸"这一个
+   交互上有差异（方案 A 直接循环点击，方案 B 弹出底部面板选择），拖拽排序和列表
+   卡片本身的视觉规格没有任何区别，所以这里的变量值直接抄 .plan-A 那一份 ---- */
 .plan-B{
   --cols:2; --gap:10px; --edge:10px; --card-h:120px; --pad:10px; --radius:18px;
   --ico:40px; --btn:24px; --fs-name:16px; --fs-sub:14px; --txt-mt:16px;
@@ -535,13 +517,12 @@ body.dragging{user-select:none;cursor:grabbing}
 .phone:not(.editing) .plan-B .card[data-size="1x0.5"] .txt{margin-right:0}
 /* 2x1/2x2 的网格结构、.ctrl 展示/布局规则改用上面 :is(.plan-A, .plan-B) 的共用规则，
    方案 B 现在会显示跟方案 A 完全同款的步进器/进度条/门锁信息/扫地机任务网格等内容——
-   自第十九轮起 .plan-B 的变量已经跟 .plan-A 完全一致（不再有"更紧凑一档"的差异化），
    两个方案的列表卡片视觉规格没有任何区别，唯一差异只在切换尺寸的交互方式 */
 
 /* ========== toast ========== */
-/* 2026-09-29 第二十二轮：toast 改成显示在触发它的悬浮菜单（.batch-bar）正上方，
-   不再固定停在页面底部——位置靠 --toast-left/--toast-bottom 这两个 JS 写入的
-   CSS 变量单独控制，滑入/滑出动效的 translateY 分离出来，两者互不干扰 */
+/* toast 显示在触发它的悬浮菜单（.batch-bar）正上方，不固定停在页面底部——位置靠
+   --toast-left/--toast-bottom 这两个 JS 写入的 CSS 变量单独控制，滑入/滑出动效的
+   translateY 分离出来，两者互不干扰 */
 .toast{
   position:fixed;left:var(--toast-left,50%);bottom:var(--toast-bottom,44px);
   transform:translateX(-50%) translateY(16px);
@@ -577,32 +558,18 @@ body.dragging{user-select:none;cursor:grabbing}
      所依赖的固定高度容器；改成 position:fixed 直接锚定浏览器视口底部，
      不然 .batch-bar 会跟着 .phone 的总高度走，看起来像跟随列表内容滚动 */
   .batch-bar{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom))}
-  /* 底部选尺寸面板是同一类问题（2026-09-29 第十九轮）：.sheet-mask/.sheet
-     桌面端靠 .phone 的 overflow:hidden 天然裁在框内、absolute 定位相对
-     .phone 没问题；移动端 .phone 变成 overflow:visible + 高度随内容撑高后，
-     遮罩/面板的 inset:0 / bottom:0 就不再对齐视口，而是对齐到"整个列表内容
-     的末尾"——滚动列表就会看到遮罩/面板出现在滚动到的位置。改成 position:fixed
-     直接相对浏览器视口定位即可，面板本身依旧贴视口底部（不像 .batch-bar 那样
-     悬浮离底 24px，它是通栏面板，天然应该贴到底） */
+  /* 底部选尺寸面板是同一类问题：.sheet-mask/.sheet 桌面端靠 .phone 的 overflow:hidden
+     天然裁在框内、absolute 定位相对 .phone 没问题；移动端 .phone 变成 overflow:visible
+     + 高度随内容撑高后，遮罩/面板的 inset:0 / bottom:0 就不再对齐视口，而是对齐到
+     "整个列表内容的末尾"。改成 position:fixed 直接相对浏览器视口定位，面板本身依旧
+     贴视口底部（不像 .batch-bar 那样悬浮离底 24px，它是通栏面板，天然应该贴到底） */
   .sheet-mask{position:fixed}
   .sheet{position:fixed;left:0;right:0;bottom:0;padding-bottom:calc(40px + env(safe-area-inset-bottom))}
-  /* 2026-09-29 第二十四轮，同日两次修正：移动端 .phone 本身就是撑满 100vw
-     （见上面 .phone 规则），所以这里的视口坐标就等于"手机屏幕"坐标。
-     第一版想让 toast 不再挤成两行，直接用 left:16px;right:16px 把宽度焊死
-     撑满——结果文案很短时（比如占位 toast）也被强行拉成一整条通栏，用户反馈
-     "文案很少也撑满"是错的：应该是文案短就正常收缩，只有文案长到自然宽度会
-     超出屏幕左右各 16px 边距时，才封顶到这个宽度、转而换行，不该无条件撑满。
-     第二版直接把 left:16px;right:16px 换成 max-width，指望"width 默认 auto
-     按内容走、max-width 只在超限时兜底"——实测发现即使短文案也被裁窄成两行，
-     根因是基础规则用 left:var(--toast-left,...) + transform:translateX(-50%)
-     做居中：浏览器算 shrink-to-fit 宽度时，可用宽度是从这个 left 值算到视口
-     右边缘为止（并不知道后面还有个 translateX 会把它挪回视口中间），而这个
-     left 值本身就已经约等于视口中点，于是"可用宽度"被腰斩成半个视口宽，比
-     max-width 更早把内容挤到两行——即使 max-width 给的上限明明够宽。
-     换成 left:0;right:0（真正把整个视口宽度声明成可用空间）+ margin:0 auto
-     水平居中，width:max-content 让盒子先按内容自然宽度算，max-width 再在
-     真正超限时兜底收窄，两者互不干扰；因为改用 margin 居中，不再需要
-     transform 里的 translateX(-50%)，只保留控制滑入动效的 translateY */
+  /* 移动端 .phone 撑满 100vw，这里的视口坐标等于"手机屏幕"坐标。toast 用
+     left:0;right:0 + margin:0 auto 水平居中、width:max-content 让盒子按内容自然
+     宽度算，max-width 只在文案长到超出屏幕左右各 16px 边距时才封顶转而换行，
+     短文案正常收缩，不会被强行撑满或裁成两行（过程见 CHANGELOG.md「第二十四轮」
+     及其两次同日修正） */
   .toast{left:0;right:0;margin:0 auto;width:max-content;max-width:calc(100vw - 32px);text-align:center;transform:translateY(16px)}
   .toast.show{transform:translateY(0)}
 }
@@ -657,8 +624,7 @@ const CLOSE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
   stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
   <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
 
-/* 底部批量操作胶囊菜单三个按钮的图标（2026-09-29 第二十轮），跟其余图标同一套
-   线性风格（24 视口、1.8-2 描边） */
+/* 底部批量操作胶囊菜单三个按钮的图标，跟其余图标同一套线性风格（24 视口、1.8-2 描边） */
 const SHARE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
   stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
   <path d="M12 15V3"/><path d="M8 7l4-4 4 4"/>
@@ -940,16 +906,14 @@ function phone(plan){
   return wrap;
 }
 
-/* ---------- 桌面端空白区域拖拽模拟滚动（2026-09-29 第二十三轮） ----------
+/* ---------- 桌面端空白区域拖拽模拟滚动 ----------
    移动端触摸滑动自带浏览器原生惯性滚动；桌面鼠标没有对应的原生"按住拖内容来滚动"
    手势，只认滚轮/滚动条。这里只在网格空白处（卡片间缝隙、上下留白）补一个鼠标拖拽
-   换算成滚动的手势：只认 pointerType === "mouse"（触摸已经原生可用，不需要也不该
-   拦截），且命中 .card 直接放弃处理，跟 enableSort() 里"长按卡片才换位"的拖拽手势
-   （只认卡片区域的 pointerdown）完全不重叠、互不干扰。
+   换算成滚动的手势：只认 pointerType === "mouse"，且命中 .card 直接放弃处理，跟
+   enableSort() 里"长按卡片才换位"的拖拽手势完全不重叠、互不干扰。
    实际滚动的容器分桌面/移动两种（跟 .phone-head 旁注释描述的滚动归属模型一致）：
-   桌面下 .screen 自己是滚动容器；但浏览器窗口窄到触发移动端布局断点时，.phone 变
-   成自适应高度、.screen 本身没有内部溢出，真正滚动的是 document——按下瞬间用
-   scrollHeight/clientHeight 判断当前是哪种情况，两种都用鼠标拖拽覆盖到 */
+   桌面下 .screen 自己是滚动容器；移动端 .screen 没有内部溢出，真正滚动的是
+   document——按下瞬间用 scrollHeight/clientHeight 判断当前是哪种情况 */
 function enableBlankScroll(screen){
   let dragging = false, startY = 0, startTop = 0, useWindow = false;
   screen.addEventListener("pointerdown", e=>{
@@ -1012,9 +976,9 @@ function buildPreviewCard(d, i, size){
 }
 
 function enableSheetCarousel(viewport, inner, dots, count, startIndex){
-  // 2026-09-29 第二十一轮：0.3 的距离阈值太难触发，改成 0.18；
-  // 同时加一个"快划"判定——哪怕距离没到阈值，只要划得够快（速度超过 FLICK_V）
-  // 且方向明确（超过 FLICK_MIN 像素，排除误触/点击抖动），也当一次有效切换处理。
+  // 切换阈值 0.18（划动距离占视口宽度比例）；同时加一个"快划"判定——哪怕距离没到
+  // 阈值，只要划得够快（速度超过 FLICK_V）且方向明确（超过 FLICK_MIN 像素，排除
+  // 误触/点击抖动），也当一次有效切换处理。
   const DAMP = 0.35, THRESHOLD = 0.18, FLICK_V = 0.5, FLICK_MIN = 24;
   let current = Math.min(Math.max(startIndex, 0), count - 1);
   let dragging = false, startX = 0, startTx = 0, dx = 0, startTime = 0;
@@ -1175,12 +1139,11 @@ function openSheet(wrap, grid, card, d){
 
   mask.classList.add("show");
   sheet.classList.add("show");
-  /* 面板打开期间锁死背后列表的滚动能力（2026-09-29 第二十三轮修复：之前面板出现后
-     拖动/滑动屏幕，蒙层下方的列表还是会跟着滚）。桌面端 .screen 自己是滚动容器
-     （见 .phone-head 旁的注释），锁它的 overflow 即可；移动端 .phone 是自适应高度，
-     真正滚动的是 document，所以同时也锁 document.body——两者只有一个在实际生效，
-     同时锁不会互相冲突。对应的解锁在 close() 里；render() 切换视图整个替换 DOM 时
-     也会顺带把 body 锁清掉，防止切视图时面板还开着导致锁泄漏 */
+  /* 面板打开期间锁死背后列表的滚动能力：桌面端 .screen 自己是滚动容器（见
+     .phone-head 旁的注释），锁它的 overflow 即可；移动端真正滚动的是 document，
+     所以同时也锁 document.body——两者只有一个实际生效，同时锁不会冲突。对应的
+     解锁在 close() 里；render() 切换视图整体替换 DOM 时也会顺带清掉 body 的锁，
+     防止切视图时面板还开着导致锁泄漏（修复过程见 CHANGELOG.md「第二十三轮」） */
   screen.style.overflow = "hidden";
   document.body.style.overflow = "hidden";
 }
@@ -1465,23 +1428,18 @@ function swapUnits(grid, unitA, unitB){
 /* ============================================================
    拖拽排序：pointer events + FLIP 动画，鼠标 / 触屏通用
    ============================================================ */
-const HOLD_MS = 350;   // 常规态下长按多久才会进入编辑态（同时开始拖拽这张卡片）。早期
-                        // 这个值只用来区分"点击选中"和"长按拖拽"，几轮调整后落在 180ms；
-                        // 第三十三轮加入常规态/编辑态两态模型后，这个计时器第一件事变成
-                        // 触发 enterEditMode()（见 start()），常规态下没到这个时长松手的
-                        // 纯点击本来就不会进入编辑态、不会选中任何卡片，不再需要为了"点击
-                        // 够快"把这个值压得很短；改回 350ms 让长按进入编辑态这个动作更接近
-                        // 真实 iOS 的"按住一会儿才会抖动"手感，不会轻微多停留就意外进入编辑态
-const DRAG_HOLD_MS = 180; // 已经在编辑态里时，长按卡片要多久才开始拖拽——跟上面 HOLD_MS
-                        // 刻意不同：卡片已经在抖动、本来就是编辑态，不需要再等一个"确认要
-                        // 不要进入编辑态"级别的长时间，维持这套计时器改造前（第三十三轮之前）
-                        // 一直在用的 180ms 手感，拖拽响应更快；哪条分支生效由下面 pointerdown
-                        // 按下瞬间 `.phone` 是否已经带 `.editing` 类决定
+const HOLD_MS = 350;   // 常规态下长按多久才会进入编辑态（同时开始拖拽这张卡片），更接近
+                        // 真实 iOS "按住一会儿才会抖动"的手感，不会轻微多停留就意外进入
+const DRAG_HOLD_MS = 180; // 已经在编辑态里时，长按卡片要多久才开始拖拽——比 HOLD_MS 短，
+                        // 因为卡片已经在抖动、本来就是编辑态，不需要再等一个"确认要不要
+                        // 进入编辑态"级别的长时间；哪条分支生效由下面 pointerdown 按下瞬间
+                        // `.phone` 是否已经带 `.editing` 类决定（两档阈值的由来见
+                        // CHANGELOG.md「第三十三轮」「第三十五轮」）
 const MOVE_TOL = 6;    // 长按期间允许的手抖像素
 
 const DEAD = 0.12;     // 目标卡片四周的死区比例，防止边界来回横跳；数值是按比例算的死区
-                        // 边框，卡片越大死区的绝对像素就越宽，0.22 时大尺寸卡片（d/m/l）
-                        // 实测要拖到接近正中央才能触发换位，2026-09-24 收窄成 0.12
+                        // 边框，卡片越大死区的绝对像素就越宽，比例过大时大尺寸卡片（d/m/l）
+                        // 要拖到接近正中央才能触发换位，收窄到 0.12 后手感正常
 const SWAP_LOCK = 240; // 一次换位动画期间不再判定，单位 ms
 
 const AUTOSCROLL_ZONE = 56;      // 指针距可视区域顶/底多近开始自动滚动，单位 px
@@ -1802,8 +1760,8 @@ function flip(grid, mutate, skip){
 }
 
 /* ---------- toast ---------- */
-/* anchorEl 传入时，toast 定位到它正上方水平居中（2026-09-29 第二十二轮，
-   给悬浮菜单点击用）；不传时退回页面底部居中的旧行为 */
+/* anchorEl 传入时，toast 定位到它正上方水平居中（给悬浮菜单点击用）；
+   不传时退回页面底部居中的旧行为 */
 let tTimer;
 function toast(msg, anchorEl){
   const t = document.getElementById("toast");
