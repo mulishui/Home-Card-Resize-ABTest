@@ -63,8 +63,21 @@ body.dragging{user-select:none;cursor:grabbing}
   flex:0 0 48px;display:flex;align-items:center;justify-content:space-between;
   padding:0 18px 12px;font-size:15px;
 }
-.navbar .act{color:#8a8d96}
-.navbar .act.done{color:#1c1d21;font-weight:600}
+/* 常规态下 Cancel/Done 不出现，只有进入编辑态（长按任意卡片触发）才显示；
+   用 opacity+pointer-events 而不是 display:none，是因为这两个 .act 本来就靠
+   .navbar 的 justify-content:space-between 把标题撑在正中间，opacity 切换不会
+   让它们在布局里消失，两态之间标题位置不会跳动 */
+.navbar .act{color:#1c1d21;opacity:0;pointer-events:none;cursor:pointer;transition:opacity .2s,color .2s}
+.navbar .act.done{font-weight:600}
+.phone.editing .navbar .act{opacity:1;pointer-events:auto}
+/* Done 默认（刚进编辑态、还没做任何改动）置灰且不可点，跟 Cancel 统一成同一个
+   颜色是等做出改动后才会发生的事——markDirty() 命中改动时才会补上 .dirty 类，
+   见 phone() 里 enterEditMode/markDirty 和 enableSort()/openSheet() 里的调用点。
+   选择器特异度（.phone.editing + .navbar + .act + .done + :not(.dirty)，5 个类）
+   必须压过上面 .phone.editing .navbar .act（4 个类）才能在编辑态下也保持置灰，
+   两条规则都带 .phone.editing 前缀、只是多一层 :not()，不会漏判成"编辑态之外
+   也置灰"——常规态下反正整体 opacity:0，这条规则本来就不生效 */
+.phone.editing .navbar .act.done:not(.dirty){color:#b9bbc1;pointer-events:none}
 .navbar .title{font-size:16px;font-weight:600}
 /* 胶囊形（2026-09-29 第二十轮，原来是 16px 圆角矩形）：border-radius 直接给一个
    远大于自身高度一半的值，不管内容撑高到多少都恒定是半圆两端，不用跟着内容高度
@@ -106,6 +119,7 @@ body.dragging{user-select:none;cursor:grabbing}
   padding:18px 0 40px;
   transform:translateY(100%);transition:transform .28s cubic-bezier(.2,.8,.2,1);
   pointer-events:none;
+  user-select:none;-webkit-user-select:none;
 }
 .sheet.show{transform:translateY(0);pointer-events:auto}
 /* 关闭按钮和标题不共用一行（2026-09-29，用户截图标注纠正过）：改成纵向排列，
@@ -224,6 +238,33 @@ body.dragging{user-select:none;cursor:grabbing}
   position:relative;touch-action:pan-y;cursor:grab;
   user-select:none;-webkit-user-select:none;
 }
+/* 编辑态卡片抖动（仿 iOS 桌面图标编辑态）：只有进入编辑态（长按任意卡片触发，
+   见 enableSort() 的 start() 调用 _enterEditMode()）才播放，常规态下静止。
+   相邻卡片用两条方向相反的关键帧错开（下面的 nth-child(even)），JS 里的
+   enableJiggle() 再给每张卡片随机负 animation-delay/时长，避免整屏卡片像一个
+   模子刻出来一样齐刷刷同步转——真实 iOS 图标抖动也是各转各的、互不同步。
+   关键帧动的是独立的 rotate 属性，不是 transform:rotate()：换位时 flip() 要靠
+   JS 给同一张卡片的 transform 临时赋值做位移动画，而 CSS 动画正在跑的属性
+   永远会覆盖内联样式对同一属性的赋值——如果两者都抢 transform，flip() 设的
+   位移会被每一帧的旋转值直接盖掉，视觉上就是换位瞬间跳变、没有滑动过程。
+   rotate/translate/scale 是浏览器原生支持的独立变换属性，彼此不互相覆盖，
+   让动画转着的同时 flip() 还能用 translate 顺畅走位移动画 */
+.phone.editing .card{animation:jiggle-a .26s ease-in-out infinite}
+@keyframes jiggle-a{0%,100%{rotate:-1.2deg}50%{rotate:1.2deg}}
+@keyframes jiggle-b{0%,100%{rotate:1.2deg}50%{rotate:-1.2deg}}
+.phone.editing .card:nth-child(even){animation-name:jiggle-b}
+/* 拖拽中的源卡片（内容已被 .placeholder 隐藏成空占位块）、浮层里的卡片克隆
+   （浮层自己的 translate/scale 由 JS 跟手控制，再叠加旋转动画会显得冲突）、
+   方案 B 面板里纯展示的预览卡片，都不需要抖动 */
+.phone.editing .card.placeholder,.phone.editing .ghost .card,.phone.editing .sheet-grid .card{animation:none}
+/* 选择器特异度必须压过 .phone.editing .card（三个类）才赢得过它——跟上面
+   "CSS 动画覆盖内联样式"是同一类坑的另一面：这里是两条 animation 规则互相压，
+   特异度不够高的那条即使在源码后面也赢不了。三个排除对象（拖拽源卡片占位块、
+   浮层卡片克隆、方案 B 面板预览卡片）都是 .phone 的后代，统一加上 .phone.editing
+   前缀即可把特异度从两个类提到四个类，稳赢 */
+@media (prefers-reduced-motion:reduce){
+  .phone.editing .card{animation:none}
+}
 .card .row1{display:flex;align-items:flex-start;justify-content:space-between}
 .card .ico{
   width:var(--ico);height:var(--ico);flex:0 0 auto;color:#c2c5cc;
@@ -317,6 +358,9 @@ body.dragging{user-select:none;cursor:grabbing}
 /* ?select=off：见 JS 里 SELECT_ENABLED 的说明，隐藏勾选圆圈 + 确保浮层不会出现
    （浮层本来就只在 toggleSelect 里加 .show，这里是双保险，不依赖 JS 分支写对） */
 .no-select .check,.no-select .batch-bar{display:none}
+/* 常规态（未进入编辑态）下勾选圆圈也不出现，跟 ?select=off 是两套独立门槛，
+   分别用不同的祖先选择器，互不干扰、可以同时生效 */
+.phone:not(.editing) .check{display:none}
 
 /* 右上角：调整尺寸入口 */
 .resize{
@@ -328,6 +372,8 @@ body.dragging{user-select:none;cursor:grabbing}
    ::before 本身没有背景/内容，不会在视觉上让按钮看起来变大 */
 .resize::before{content:"";position:absolute;inset:-6px}
 .resize:active{transform:scale(.9);background:#75787f}
+/* 常规态下 ⤢ 按钮也不出现，只有编辑态才能调尺寸 */
+.phone:not(.editing) .resize{display:none}
 .resize svg{width:54%;height:54%;display:block}
 
 /* 拖拽态 */
@@ -383,6 +429,10 @@ body.dragging{user-select:none;cursor:grabbing}
    ⤢ 按钮本身的 6px 间距（⤢ 按钮自己的宽度已经由 .row1 的 flex 尺寸单独占位，不需要
    算进这个 margin） */
 .no-select .plan-A .card[data-size="1x0.5"] .txt{margin-right:6px}
+/* 常规态下勾选圆圈和 ⤢ 按钮都不出现，这两部分预留空间都要还给设备名（不像
+   ?select=off 那样只还勾选圆圈那一截），选择器比上面 .no-select 那条多一层，
+   特异度更高，两者同时生效时这条赢，归零更彻底 */
+.phone:not(.editing) .plan-A .card[data-size="1x0.5"] .txt{margin-right:0}
 /* 2x1/2x2 共用同一套两行网格布局：图标 + 设备名/房间 + 尺寸按钮一行，
    状态控件独占下一行。改用 CSS Grid（而不是 flex-wrap + row-gap）是因为
    多行 flex 的 gap 在"某一行内容比预期更高"时会跟 align-content 的隐式
@@ -481,6 +531,8 @@ body.dragging{user-select:none;cursor:grabbing}
 }
 /* ?select=off：理由同 .plan-A 那条同名规则 */
 .no-select .plan-B .card[data-size="1x0.5"] .txt{margin-right:6px}
+/* 理由同方案 A 那条同名规则 */
+.phone:not(.editing) .plan-B .card[data-size="1x0.5"] .txt{margin-right:0}
 /* 2x1/2x2 的网格结构、.ctrl 展示/布局规则改用上面 :is(.plan-A, .plan-B) 的共用规则，
    方案 B 现在会显示跟方案 A 完全同款的步进器/进度条/门锁信息/扫地机任务网格等内容——
    自第十九轮起 .plan-B 的变量已经跟 .plan-A 完全一致（不再有"更紧凑一档"的差异化），
@@ -560,7 +612,7 @@ body.dragging{user-select:none;cursor:grabbing}
 
 <div class="topbar">
   <h1>Device Card Size Study</h1>
-  <p class="sub">The page is in "Edit" mode: long-press to reorder cards, tap the button in the top-right corner to resize</p>
+  <p class="sub">Long-press any card to enter Edit mode — drag to reorder or tap the resize button; tap Done to save changes or Cancel to discard them</p>
   <div class="seg" id="viewSeg">
     <button data-view="A" class="on">Plan A · Tap to Resize</button>
     <button data-view="B">Plan B · Pick a Size</button>
@@ -782,7 +834,7 @@ function phone(plan){
       <div class="phone-head">
         <div class="navbar">
           <span class="act">Cancel</span>
-          <span class="title">Edit Cards</span>
+          <span class="title">Home Page</span>
           <span class="act done">Done</span>
         </div>
       </div>
@@ -808,11 +860,59 @@ function phone(plan){
     </div>`;
 
   const grid = wrap.querySelector(".grid");
+  const phoneEl = wrap.querySelector(".phone");
+  const titleEl = wrap.querySelector(".navbar .title");
+  const doneEl = wrap.querySelector(".navbar .act.done");
+
+  /* 常规态/编辑态状态机：常规态下卡片纯展示（不抖动、⤢/勾选圆圈隐藏），只有
+     长按任意卡片（见 enableSort() 的 start()）才会进入编辑态。editSnapshot
+     记录进入编辑态那一刻的排序+尺寸，Cancel 时用它整体还原，Done 则保留。
+     markDirty() 标记"这次编辑态里真的发生过排序/尺寸改动"，驱动 Done 按钮的
+     置灰/可点状态（见上方 CSS），调用点分散在三处会真正改动卡片的地方：方案 A
+     的 ⤢ 循环切尺寸（下方 grid 的 click 监听）、方案 B 面板确认尺寸
+     （openSheet() 的 onConfirm()）、拖拽换位（enableSort() 的 move()，跨函数
+     调用走 phoneEl._markDirty，跟 _enterEditMode 同一种写法） */
+  let editSnapshot = null;
+  function markDirty(){ doneEl.classList.add("dirty"); }
+  function enterEditMode(){
+    if(phoneEl.classList.contains("editing")) return;
+    editSnapshot = [...grid.children].map(c=>({i:c.dataset.i, size:c.dataset.size}));
+    doneEl.classList.remove("dirty");
+    phoneEl.classList.add("editing");
+    titleEl.textContent = "Edit Cards";
+  }
+  function exitEditMode(commit){
+    if(!phoneEl.classList.contains("editing")) return;
+    grid.querySelectorAll(".card.selected").forEach(c=>c.classList.remove("selected"));
+    wrap.querySelector(".batch-bar").classList.remove("show");
+    if(!commit && editSnapshot){
+      const snap = editSnapshot;
+      flip(grid, ()=>{
+        const byI = new Map([...grid.children].map(c=>[c.dataset.i, c]));
+        snap.forEach(entry=>{
+          const c = byI.get(entry.i);
+          c.dataset.size = entry.size;
+          grid.appendChild(c);
+        });
+        relayout(grid);
+      });
+    }
+    editSnapshot = null;
+    phoneEl.classList.remove("editing");
+    titleEl.textContent = "Home Page";
+  }
+  phoneEl._enterEditMode = enterEditMode;   // enableSort() 闭包里跨函数调用，写法同下面 wrap._sheetCarousel
+  phoneEl._markDirty = markDirty;           // enableSort()/openSheet() 闭包里跨函数调用，同上
+
   relayout(grid);
+  enableJiggle(grid);
   enableSort(grid);
   enableBlankScroll(wrap.querySelector(".screen"));
+  wrap.querySelector(".navbar .act:not(.done)").addEventListener("click", ()=>exitEditMode(false));
+  wrap.querySelector(".navbar .act.done").addEventListener("click", ()=>exitEditMode(true));
   grid.addEventListener("click", e=>{
     const btn = e.target.closest(".resize"); if(!btn) return;
+    if(!phoneEl.classList.contains("editing")) return;
     e.stopPropagation();
     const card = btn.closest(".card");
     if(plan === "B"){
@@ -823,8 +923,14 @@ function phone(plan){
     const device = DEVICES[+card.dataset.i];
     const next = nextSize(card.dataset.size, device.sizes);
     if(next === card.dataset.size){ hintNear(btn, "This device doesn't support this size"); return; }
-    card.dataset.size = next;
-    relayout(grid);
+    markDirty();
+    // 跟拖拽重排一样走 flip() 补位动画：被点的这张卡自己 skip 掉（尺寸变化
+    // 直接瞬间呈现，给点击一个即时反馈），其余因为它变大/变小而被挤动位置
+    // 的卡片平滑滑动过去，不再是整屏瞬移
+    flip(grid, ()=>{
+      card.dataset.size = next;
+      relayout(grid);
+    }, card);
   });
   wrap.querySelector(".batch-bar").addEventListener("click", e=>{
     const btn = e.target.closest("button"); if(!btn) return;
@@ -1049,8 +1155,17 @@ function openSheet(wrap, grid, card, d){
     document.body.style.overflow = "";
   }
   function onConfirm(){
-    card.dataset.size = sizes[carousel.current()];
-    relayout(grid);
+    const newSize = sizes[carousel.current()];
+    if(newSize !== card.dataset.size){
+      const phoneEl = wrap.querySelector(".phone");
+      phoneEl._markDirty && phoneEl._markDirty();
+    }
+    // 跟方案 A 的 ⤢ 循环点击一样，跟拖拽重排共用 flip() 补位动画，skip 掉
+    // 卡片自己（面板关闭后它直接呈现新尺寸），其余被挤动的卡片平滑滑过去
+    flip(grid, ()=>{
+      card.dataset.size = newSize;
+      relayout(grid);
+    }, card);
     close();
   }
 
@@ -1188,6 +1303,19 @@ function relayout(grid){
     } else if(!lone05 && hit){
       hit.remove();
     }
+  });
+}
+
+// 给每张卡片的抖动动画随机一份时长/负延迟：负 delay 等于让动画从周期中间的随机
+// 相位直接起播，不用真的等那么久，卡片一出现就已经互相错开，不会先同步转一轮
+// 再散开。只需要在卡片创建时设一次，relayout() 只改 gridColumn/gridRow，不会
+// 覆盖这里设的内联样式，不用每次重排后重新随机
+function enableJiggle(grid){
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  [...grid.children].forEach(card=>{
+    const dur = 0.22 + Math.random() * 0.1;
+    card.style.animationDuration = dur + "s";
+    card.style.animationDelay = (-Math.random() * dur) + "s";
   });
 }
 
@@ -1337,9 +1465,18 @@ function swapUnits(grid, unitA, unitB){
 /* ============================================================
    拖拽排序：pointer events + FLIP 动画，鼠标 / 触屏通用
    ============================================================ */
-const HOLD_MS = 180;   // 长按多久进入拖拽——先从 100 调到 350 解决点击误判成拖拽，
-                        // 又嫌 350/200 太慢，回调到 180；仍明显长于普通点击（通常
-                        // 100ms 以内松手），同时更快进入拖拽态
+const HOLD_MS = 350;   // 常规态下长按多久才会进入编辑态（同时开始拖拽这张卡片）。早期
+                        // 这个值只用来区分"点击选中"和"长按拖拽"，几轮调整后落在 180ms；
+                        // 第三十三轮加入常规态/编辑态两态模型后，这个计时器第一件事变成
+                        // 触发 enterEditMode()（见 start()），常规态下没到这个时长松手的
+                        // 纯点击本来就不会进入编辑态、不会选中任何卡片，不再需要为了"点击
+                        // 够快"把这个值压得很短；改回 350ms 让长按进入编辑态这个动作更接近
+                        // 真实 iOS 的"按住一会儿才会抖动"手感，不会轻微多停留就意外进入编辑态
+const DRAG_HOLD_MS = 180; // 已经在编辑态里时，长按卡片要多久才开始拖拽——跟上面 HOLD_MS
+                        // 刻意不同：卡片已经在抖动、本来就是编辑态，不需要再等一个"确认要
+                        // 不要进入编辑态"级别的长时间，维持这套计时器改造前（第三十三轮之前）
+                        // 一直在用的 180ms 手感，拖拽响应更快；哪条分支生效由下面 pointerdown
+                        // 按下瞬间 `.phone` 是否已经带 `.editing` 类决定
 const MOVE_TOL = 6;    // 长按期间允许的手抖像素
 
 const DEAD = 0.12;     // 目标卡片四周的死区比例，防止边界来回横跳；数值是按比例算的死区
@@ -1347,11 +1484,17 @@ const DEAD = 0.12;     // 目标卡片四周的死区比例，防止边界来回
                         // 实测要拖到接近正中央才能触发换位，2026-09-24 收窄成 0.12
 const SWAP_LOCK = 240; // 一次换位动画期间不再判定，单位 ms
 
+const AUTOSCROLL_ZONE = 56;      // 指针距可视区域顶/底多近开始自动滚动，单位 px
+const AUTOSCROLL_MAX_SPEED = 14; // 贴边时每帧最大滚动量，越靠近边缘越接近这个速度
+
 function enableSort(grid){
   let timer = null, armed = false, active = false, lock = false;
   let el = null, ghost = null, sx = 0, sy = 0, ox = 0, oy = 0, bounds = null, scale = 1;
+  let curX = 0, curY = 0, rafId = null, phoneRef = null, dragUsesWindow = false;
   const planClass = [...grid.classList].find(c => c.startsWith("plan-"));
   const cols = parseInt(getComputedStyle(grid).getPropertyValue('--cols')) || 2;
+  const screenEl = grid.closest(".screen");
+  const phoneHeadEl = grid.closest(".phone").querySelector(".phone-head");
 
   grid.addEventListener("pointerdown", e=>{
     if(e.button != null && e.button !== 0) return;
@@ -1359,15 +1502,28 @@ function enableSort(grid){
     const card = e.target.closest(".card"); if(!card) return;
 
     el = card; sx = e.clientX; sy = e.clientY; armed = true;
-    timer = setTimeout(()=>start(e.clientX, e.clientY), HOLD_MS);
+    const alreadyEditing = card.closest(".phone").classList.contains("editing");
+    timer = setTimeout(()=>start(e.clientX, e.clientY), alreadyEditing ? DRAG_HOLD_MS : HOLD_MS);
   });
 
   function start(x, y){
     if(!el) return;
     active = true; armed = false; lock = false;
+    // 长按期间手指/鼠标通常是静止的，start() 触发时还没有任何 pointermove 发生过，
+    // curX/curY 会停留在上一次拖拽结束时的旧坐标（页面刚加载后首次拖拽则是初始值
+    // 0,0）。下面紧接着 requestAnimationFrame(autoScrollTick) 会在第一帧就用这个
+    // 坐标判断是否贴边、以及调用 move() 重新摆放浮层——不在这里同步成当前真实坐标，
+    // 第一帧就会拿着错误坐标把浮层瞬移到错误位置（常见表现：刚长按进入编辑态开始
+    // 拖拽，卡片瞬间飞到屏幕左上角之外）
+    curX = x; curY = y;
     const r = el.getBoundingClientRect();
     ox = x - r.left; oy = y - r.top;
     const phone = el.closest(".phone");
+    // 常规态下长按任意卡片：先进入编辑态（标题/抖动/⤢/勾选圆圈一起出现），
+    // 再继续走下面的逻辑直接开始拖拽这张卡片——跟 iOS 桌面图标长按同时
+    // "进入抖动编辑态 + 开始拖着这个图标走"一致；已经在编辑态时调用这个
+    // 函数会被它内部的早退逻辑跳过，不会重复截取 Cancel 用的还原快照
+    phone._enterEditMode && phone._enterEditMode();
     bounds = phone.getBoundingClientRect();
     // .ghost 挂在 .phone 内部，会连带被 .phone 的 transform:scale（PC 端模拟手机
     // 观感那条规则，见 CSS）再缩放一轮；getBoundingClientRect 量出来的都是缩放后
@@ -1376,6 +1532,15 @@ function enableSort(grid){
     // .phone 自己的本地坐标系（未缩放前的 340 宽度那套坐标），移动端 scale 恒为
     // 1，这段换算等于不生效，不需要区分平台单独处理
     scale = bounds.width / phone.offsetWidth;
+    // 整次拖拽手势开始时就固定住滚动归属（跟后面 autoScrollTick 共用同一个值，
+    // 不逐帧重新判断）：移动端整页滚动模式下 .phone 没有 transform、但自身
+    // overflow:visible、高度 auto——如果浮层按"相对 .phone 本地坐标"定位，
+    // 自动滚动时每次重新量 bounds 都会让浮层在 .phone 内部的本地偏移跟着
+    // 页面已滚动的距离一起增大，而 overflow:visible 会把这块越冲越远的浮层
+    // 计入文档整体高度，形成"滚得越多、可滚动范围被撑得越大"的死循环，
+    // 实测会导致自动滚动永远到不了列表真正的底部。桌面端 .phone 有缩放
+    // transform，天然是 position:fixed 后代的新包含块，这条分支不受影响
+    dragUsesWindow = screenEl.scrollHeight <= screenEl.clientHeight;
 
     // 浮层是"外层定位容器（.ghost）+ 里面一张卡片克隆"两层结构：
     // 外层负责跟手位移/裁切，卡片克隆负责视觉样式——两者不能是同一个元素，
@@ -1387,8 +1552,6 @@ function enableSort(grid){
     if(planClass) ghost.classList.add(planClass);   // 撑起 CSS 变量，也让 .plan-A .card 系列规则能命中里面的克隆卡片
     ghost.style.width = (r.width / scale) + "px";
     ghost.style.height = (r.height / scale) + "px";
-    const left0 = (r.left - bounds.left) / scale, top0 = (r.top - bounds.top) / scale;
-    ghost.style.transform = `translate(${left0}px,${top0}px) scale(1.04)`;
 
     const ghostCard = el.cloneNode(true);
     ghostCard.style.width = "100%";
@@ -1397,17 +1560,73 @@ function enableSort(grid){
     ghostCard.style.margin = "0";
     ghost.appendChild(ghostCard);
 
-    // 浮层挂在 .phone 内部（不是 body 下）：配合 .phone 自带的 overflow:hidden，
-    // 拖出手机边框的部分会被直接裁掉，而不是把浮层的位置钳制在边框以内
-    phone.appendChild(ghost);
+    if(dragUsesWindow){
+      // 直接挂在 body 下、position:fixed 按纯视口坐标定位，跟 .phone 自身的
+      // 滚动位置/overflow 完全脱钩，见上面的说明
+      ghost.style.position = "fixed";
+      document.body.appendChild(ghost);
+      ghost.style.transform = `translate(${x - ox}px,${y - oy}px) scale(1.04)`;
+    } else {
+      // 浮层挂在 .phone 内部（不是 body 下）：配合 .phone 自带的 overflow:hidden，
+      // 拖出手机边框的部分会被直接裁掉，而不是把浮层的位置钳制在边框以内
+      const left0 = (r.left - bounds.left) / scale, top0 = (r.top - bounds.top) / scale;
+      ghost.style.transform = `translate(${left0}px,${top0}px) scale(1.04)`;
+      phone.appendChild(ghost);
+    }
     el.classList.add("placeholder");
     document.body.classList.add("dragging");
     if(navigator.vibrate) navigator.vibrate(12);
+
+    phoneRef = phone;
+    rafId = requestAnimationFrame(autoScrollTick);
+  }
+
+  // 拖拽期间 document 的 touchmove 监听挡掉了原生触屏滚动（见下方），指针停在
+  // 可视区域顶/底边缘时只能靠这个自调度的 rAF 循环持续滚动列表——光靠
+  // pointermove 不够，手指按住不动贴在边缘时根本不会再触发新的 pointermove
+  function autoScrollTick(){
+    if(!active){ rafId = null; return; }
+    let top, bottom;
+    if(dragUsesWindow){
+      top = phoneHeadEl ? phoneHeadEl.getBoundingClientRect().bottom : 0;
+      bottom = window.innerHeight;
+    } else {
+      const r = screenEl.getBoundingClientRect();
+      top = r.top; bottom = r.bottom;
+    }
+
+    let dy = 0;
+    if(curY < top + AUTOSCROLL_ZONE){
+      dy = -AUTOSCROLL_MAX_SPEED * (1 - Math.max(0, curY - top) / AUTOSCROLL_ZONE);
+    } else if(curY > bottom - AUTOSCROLL_ZONE){
+      dy = AUTOSCROLL_MAX_SPEED * (1 - Math.max(0, bottom - curY) / AUTOSCROLL_ZONE);
+    }
+
+    if(dy){
+      if(dragUsesWindow) window.scrollBy(0, dy);
+      else screenEl.scrollTop += dy;
+      // 桌面端（.screen 自身滚动）浮层位移公式依赖 bounds，滚动后必须重新量一次，
+      // 否则贴着边缘不动手指也会出现浮层跟内容一起滚走、脱离指针的情况；移动端
+      // 浮层已经是 position:fixed 按纯视口坐标定位（见 start()），不依赖 bounds，
+      // 不需要也不能在这里重新量 .phone 的 bounds（见 start() 里的说明）。
+      // 滚动到头时浏览器本身会钳制 scrollTop/scrollBy，不用额外判断"是否还有更多内容"
+      if(!dragUsesWindow && phoneRef){
+        bounds = phoneRef.getBoundingClientRect();
+        scale = bounds.width / phoneRef.offsetWidth;
+      }
+      if(ghost) move(curX, curY);
+    }
+    rafId = requestAnimationFrame(autoScrollTick);
   }
 
   function move(x, y){
-    const left = (x - ox - bounds.left) / scale, top = (y - oy - bounds.top) / scale;
-    ghost.style.transform = `translate(${left}px,${top}px) scale(1.04)`;
+    curX = x; curY = y;
+    if(dragUsesWindow){
+      ghost.style.transform = `translate(${x - ox}px,${y - oy}px) scale(1.04)`;
+    } else {
+      const left = (x - ox - bounds.left) / scale, top = (y - oy - bounds.top) / scale;
+      ghost.style.transform = `translate(${left}px,${top}px) scale(1.04)`;
+    }
     if(lock) return;                       // 换位动画没跑完，先不判定
 
     const kids = [...grid.children];
@@ -1458,6 +1677,7 @@ function enableSort(grid){
       if(fx < DEAD || fx > 1 - DEAD || fy < DEAD || fy > 1 - DEAD) return;
 
       lock = true;
+      el.closest(".phone")._markDirty?.();
       flip(grid, ()=>{
         const elIdx = kids.indexOf(el), overIdx = kids.indexOf(over);
         grid.insertBefore(el, elIdx < overIdx ? over.nextSibling : over);
@@ -1494,6 +1714,7 @@ function enableSort(grid){
     const elWasPaired = pairStart[kids.indexOf(el)] !== -1;
 
     lock = true;
+    el.closest(".phone")._markDirty?.();
     flip(grid, ()=>{
       if(overUnit.length > 1){
         // 目标是配对：被拖卡片和这一整对互换位置，不拆散目标配对插进中间
@@ -1527,13 +1748,19 @@ function enableSort(grid){
     if(active && ghost){
       const r = el.getBoundingClientRect();
       ghost.style.transition = "transform .2s cubic-bezier(.2,.7,.3,1)";
-      ghost.style.transform = `translate(${(r.left - bounds.left) / scale}px,${(r.top - bounds.top) / scale}px) scale(1)`;
+      ghost.style.transform = dragUsesWindow
+        ? `translate(${r.left}px,${r.top}px) scale(1)`
+        : `translate(${(r.left - bounds.left) / scale}px,${(r.top - bounds.top) / scale}px) scale(1)`;
       const g = ghost, e2 = el;
       setTimeout(()=>{ g.remove(); e2.classList.remove("placeholder"); }, 200);
     }
     ghost = null; el = null; active = false;
+    if(rafId){ cancelAnimationFrame(rafId); rafId = null; }
+    phoneRef = null;
     document.body.classList.remove("dragging");
-    if(SELECT_ENABLED && tapped) toggleSelect(tapped);
+    // 常规态下的纯点击不会经过 start()，不会进入编辑态，这里的 .editing 判断
+    // 自然为 false；只有已经在编辑态时点击卡片才切换选中
+    if(SELECT_ENABLED && tapped && tapped.closest(".phone").classList.contains("editing")) toggleSelect(tapped);
   }
 
   document.addEventListener("pointermove", e=>{
@@ -1551,7 +1778,11 @@ function enableSort(grid){
 }
 
 /* FLIP：让 grid 重排后的位移带上动画；skip 的元素直接瞬移（拖拽占位块不参与，
-   否则它在动画途中的位置会干扰 elementFromPoint 命中判断） */
+   否则它在动画途中的位置会干扰 elementFromPoint 命中判断）。
+   位移用独立的 translate 属性而不是 transform:translate()——卡片自己还在用
+   transform 之外的 rotate 属性做抖动动画，两者本来互不相干，但如果这里改用
+   transform 会跟后续任何改成 transform 的动画再次冲突，统一用独立变换属性
+   更稳妥 */
 function flip(grid, mutate, skip){
   const items = [...grid.children];
   const first = items.map(i => i.getBoundingClientRect());
@@ -1562,10 +1793,10 @@ function flip(grid, mutate, skip){
     const dx = first[idx].left - last.left, dy = first[idx].top - last.top;
     if(!dx && !dy) return;
     it.style.transition = "none";
-    it.style.transform = `translate(${dx}px,${dy}px)`;
+    it.style.translate = `${dx}px ${dy}px`;
     requestAnimationFrame(()=>{
-      it.style.transition = "transform .22s cubic-bezier(.2,.7,.3,1)";
-      it.style.transform = "";
+      it.style.transition = "translate .22s cubic-bezier(.2,.7,.3,1)";
+      it.style.translate = "";
     });
   });
 }
