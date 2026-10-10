@@ -1530,6 +1530,14 @@ timer = setTimeout(()=>start(e.clientX, e.clientY), alreadyEditing ? DRAG_HOLD_M
 
 **Playwright 实测**：重跑拖拽置灰变化、Cancel 退出、Done 退出（含有改动/无改动两种情形）三条路径，`.editing` 类增删、`idle` 类增删、`opacity`/`pointer-events`/`color` 计算值全部符合预期，零报错。`:not()` 选择器失效属于真机渐染层问题，headless 环境本身无法验证"换掉 `:not()` 是否真的解决了真机卡住"，同样需要用户在 iPhone 上确认。
 
+## 第三十七轮再追加：上一条"换掉 :not()"的修复真机验证仍然无效，彻底放弃 CSS 层叠方案（2026-10-10）
+
+用户确认已经是最新推送（用 `last-modified`/内容比对核实过 GitHub Pages 确实部署了最新代码，排除缓存导致"看起来没生效"的可能），但真机现象跟最早一次完全一样："编辑态退出到常规态时，只有 Done，没有 Cancel"。说明上一条"把 `:not(.dirty)` 换成正向类 `.idle`"的修复没有命中真正病因——真正的共同点并不是`:not()` 本身，而是 Done 比 Cancel 多一条**需要靠类数量压过 `.phone.editing .navbar .act` 才能生效、且这条规则本身又挂在同一个 `.phone.editing` 祖先前缀下**的覆盖规则，不管这条规则写成 `:not(.dirty)` 还是 `.idle`，选择器形状（"`.phone.editing` 祖先 + 好几个类 + 要在同一次祖先类变化里跟另一条规则比谁的特异度高"）本质没变，iOS Safari 真机上同一类样式失效问题照样复现。
+
+**彻底修复**：不再用任何 CSS 类选择器去控制 Done 的置灰/可点状态，改成在 `enterEditMode()`/`markDirty()`/`exitEditMode()` 三处直接用 JS 设置 `doneEl.style.color`/`doneEl.style.pointerEvents` 这两个内联样式，内联样式的优先级是确定性的、不涉及任何层叠计算，从根本上绕开"样式失效/重绘没跟上类变化"这整类问题。真正决定 Done 显隐的 `opacity`/`pointer-events`，继续沿用跟 Cancel 完全相同、从第一条修复开始就没动过的 `.navbar .act{opacity:0}` / `.phone.editing .navbar .act{opacity:1}` 这一组最简单的规则——这组规则本身从没在真机上出过问题（Cancel 一直正常），只是之前 Done 身上叠加的"置灰"规则把它拖累了。CSS 里原来的 `.idle` 规则整条删除，`transition` 也去掉不再需要的 `color .2s`。
+
+**Playwright 实测**：重跑拖拽置灰、Cancel 退出、Done 退出（有改动/无改动）三条路径，`doneEl.style.color`/`pointerEvents` 内联样式和 `opacity`/`pointer-events` 计算值全部符合预期，零报错。这是第三次尝试，前两次都在真机上验证失败，这次把"用类选择器控制置灰状态"这个思路整体放弃，而不是继续在同一个思路上微调；如果真机上还有问题，大概率说明病根不在 Done 的置灰逻辑上，需要换一种方式排查（比如用 Mac 的 Safari 远程调试连 iPhone，直接看真机上 Done 元素此刻真实的 computed style 和 inline style，而不是继续在本地猜）。
+
 ## 相关
 
 - Claude 的跨会话记忆里也存了一份对应记录：
