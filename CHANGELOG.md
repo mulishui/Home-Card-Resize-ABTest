@@ -1508,6 +1508,18 @@ timer = setTimeout(()=>start(e.clientX, e.clientY), alreadyEditing ? DRAG_HOLD_M
 - 自动滚动本身功能不受影响：贴底边缘仍能正确持续滚动、浮层贴着指针、松手立即停止，零报错。
 - 重跑 `verify_r33_fix.js`/`verify_edit_mode.js`/`verify_edit_done_and_drag.js`/`verify_edit_mode_b_and_misc.js`/`verify_done_dirty.js`，确认无回归，全部零报错。
 
+## 第三十七轮：修复移动端 Safari 下退出编辑态后 Done/Cancel 视觉冻结的 bug（2026-10-10）
+
+用户反馈移动端上一个 bug："进入编辑态后，再退出编辑态，Done 还会一直存在"，追问细节后确认：无论是点 Done 还是点 Cancel 退出都会发生；按钮本身的样式（编辑态里是置灰还是激活色）会原地冻结在退出前的那一帧，退出后既不是正常的消失（透明），也不是点不动——而是保留了退出那一刻的视觉状态，只在 iOS Safari 上出现。
+
+**排查过程**：用 Chromium 模拟移动端视口 + 模拟长按/点击复现"长按进入编辑态→点 Done/Cancel 退出"的完整流程，`.navbar .act.done` 的 `opacity`/`pointer-events` 计算值在退出后都正确变回 `0`/`none`，`.editing` 类也正确从 `.phone` 上移除——说明 DOM/CSS 规则本身的逻辑没有问题，退出逻辑只有 `exitEditMode(commit)` 这一条路径（Done/Cancel 共用，见 [index.html](index.html) 的 `phone()` 函数），不存在"漏了一种退出方式没处理"的可能。
+
+**根因**：`.phone-head`（吸顶导航栏）在移动端用 `position:sticky` 把 Cancel/Done 所在的 `.navbar` 钉在页面滚动时的视口顶部。iOS Safari 对处于"吸顶"状态的 `position:sticky` 元素有个已知渲染 bug：当它的后代元素只改变 `opacity`/`color` 这类不影响几何布局的属性时，有时不会触发重绘，视觉上会原地冻结在上一次真正重绘时的样子，直到某个外部动作（比如滚动一下）强制触发重绘——这跟用户描述的"按钮保留了退出前那一帧的样子"完全吻合：DOM 状态是对的，只是没被重新绘制到屏幕上。桌面端 `.screen` 自己滚动，`.phone-head` 的 `position:sticky` 根本不会进入"吸顶"状态（见 [index.html:57-60](index.html#L57-L60) 的既有注释），所以这个 bug 只在移动端出现。
+
+**修复**：给 `.phone-head` 加上 `transform:translateZ(0)`（连同 `-webkit-` 前缀），把它提升成独立的合成层——这是这类 WebKit sticky 重绘 bug 的标准规避写法，让浏览器把这块内容当成需要独立合成管理的层，不再跳过它内部的重绘（[index.html](index.html) 的 `.phone-head` 规则）。改动只加一行 CSS 属性，不改变 `position:sticky` 本身的定位行为，桌面端因为本来就不会触发吸顶也不受影响。
+
+**验证**：这是只在真机 iOS Safari 的 GPU 合成管线上才会触发的渲染 bug，无法在 Playwright headless 环境里直接复现/回归（Chromium 没有这个 bug，headless WebKit 也不保证复现真机合成行为）。用 Chromium 模拟移动端视口跑了长按进入编辑态→点 Cancel/Done 退出的完整流程，确认改动前后 `.editing` 类增删、`opacity`/`pointer-events` 计算值、卡片排布都没有变化（即没有引入回归），零报错。这个修复本身需要用户在真实 iPhone 上验证是否解决。
+
 ## 相关
 
 - Claude 的跨会话记忆里也存了一份对应记录：

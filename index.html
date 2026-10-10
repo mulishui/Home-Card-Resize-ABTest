@@ -58,7 +58,12 @@ body.dragging{user-select:none;cursor:grabbing}
    有独立高度+滚动条，.phone-head 天然不受影响；移动端 .phone 高度变成 auto，
    .screen 撑满内容不再自己滚动，改由页面（document）整体滚动，这时
    position:sticky 才会真正生效，让这块头部在页面往下滚时贴在视口顶部不动 */
-.phone-head{position:sticky;top:0;z-index:4;background:#f5f6f8;flex:0 0 auto;padding-top:20px}
+/* -webkit-transform:translateZ(0) 把 .phone-head 提升成独立合成层：iOS Safari
+   有个已知 bug，position:sticky 元素处于"吸顶"状态时，内部子元素只改 opacity/
+   color 这类非几何属性有时不会触发重绘，导致 Done/Cancel 这类靠 opacity 切换
+   显隐的按钮退出编辑态后视觉上原地冻结（保留退出前那一帧的颜色/置灰状态），
+   但其实 DOM 状态已经是对的。提升合成层能让这部分内容的重绘不再被跳过 */
+.phone-head{position:sticky;top:0;z-index:4;background:#f5f6f8;flex:0 0 auto;padding-top:20px;-webkit-transform:translateZ(0);transform:translateZ(0)}
 .navbar{
   flex:0 0 48px;display:flex;align-items:center;justify-content:space-between;
   padding:0 18px 12px;font-size:15px;
