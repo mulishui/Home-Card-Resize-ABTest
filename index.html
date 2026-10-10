@@ -58,11 +58,10 @@ body.dragging{user-select:none;cursor:grabbing}
    有独立高度+滚动条，.phone-head 天然不受影响；移动端 .phone 高度变成 auto，
    .screen 撑满内容不再自己滚动，改由页面（document）整体滚动，这时
    position:sticky 才会真正生效，让这块头部在页面往下滚时贴在视口顶部不动 */
-/* -webkit-transform:translateZ(0) 把 .phone-head 提升成独立合成层：iOS Safari
-   有个已知 bug，position:sticky 元素处于"吸顶"状态时，内部子元素只改 opacity/
-   color 这类非几何属性有时不会触发重绘，导致 Done/Cancel 这类靠 opacity 切换
-   显隐的按钮退出编辑态后视觉上原地冻结（保留退出前那一帧的颜色/置灰状态），
-   但其实 DOM 状态已经是对的。提升合成层能让这部分内容的重绘不再被跳过 */
+/* -webkit-transform:translateZ(0) 把 .phone-head 提升成独立合成层，缓解但不能
+   根治 iOS Safari 的吸顶重绘 bug；真正让 Done/Cancel 退出编辑态后不再视觉冻结的
+   是 JS 里的 forceHeadRepaint()，每次编辑态状态变化时强制同步重排一次
+   .phone-head（过程见 CHANGELOG.md「第三十八轮」） */
 .phone-head{position:sticky;top:0;z-index:4;background:#f5f6f8;flex:0 0 auto;padding-top:20px;-webkit-transform:translateZ(0);transform:translateZ(0)}
 .navbar{
   flex:0 0 48px;display:flex;align-items:center;justify-content:space-between;
@@ -75,16 +74,9 @@ body.dragging{user-select:none;cursor:grabbing}
 .navbar .act{color:#1c1d21;opacity:0;pointer-events:none;cursor:pointer;transition:opacity .2s}
 .navbar .act.done{font-weight:600}
 .phone.editing .navbar .act{opacity:1;pointer-events:auto}
-/* Done 的"刚进编辑态、没做改动时置灰不可点"不走 CSS 类选择器control，是因为
-   之前试过两版都靠"类选择器 + .phone.editing 祖先前缀"控制这个灰色/可点状态
-   （先是 :not(.dirty)，后来换成不含 :not() 的 .idle 类），真机 iOS Safari 上
-   都复现"退出编辑态后 Done 卡在退出前那一帧的颜色/可点状态不消失，Cancel 不受
-   影响"——怀疑是这类"选择器特异度要压过某条 .phone.editing 开头的规则"的写法
-   本身在 iOS Safari 上有样式失效/重绘方面的问题。改成直接在 enterEditMode/
-   markDirty/exitEditMode 里用内联 style 设置 doneEl.style.color/pointerEvents，
-   彻底绕开层叠计算；真正决定 Done 显隐的 opacity/pointer-events 仍然只靠上面
-   这条跟 Cancel 共用的 .phone.editing .navbar .act 规则，不受这部分内联样式
-   影响 */
+/* Done 的置灰/可点状态直接用内联 style 设置 color/pointer-events，不走类选择器，
+   避免层叠计算；显隐仍由上面跟 Cancel 共用的 .phone.editing .navbar .act 规则
+   控制，不受这部分内联样式影响（过程见 CHANGELOG.md「第三十七轮」） */
 .navbar .title{font-size:16px;font-weight:600}
 /* 胶囊形：border-radius 直接给一个远大于自身高度一半的值，不用跟着内容高度手算圆角数值 */
 /* 自适应宽度、水平居中，按钮间隔靠 flex gap 固定 24px，不依赖 space-around 摊开间距，
@@ -834,8 +826,20 @@ function phone(plan){
 
   const grid = wrap.querySelector(".grid");
   const phoneEl = wrap.querySelector(".phone");
+  const phoneHeadEl = wrap.querySelector(".phone-head");
   const titleEl = wrap.querySelector(".navbar .title");
   const doneEl = wrap.querySelector(".navbar .act.done");
+
+  /* iOS Safari 对 position:sticky 元素（.phone-head）有已知重绘 bug：吸顶状态下
+     子元素只改 opacity/color 这类非几何属性，有时完全不会触发重绘，直到下一次
+     外部布局事件（比如滚动）才会被动刷新。强制同步 reflow 一次能让浏览器立刻
+     把积压的重绘补上，比单靠 CSS 合成层提升更可靠（过程见 CHANGELOG.md
+     「第三十八轮」） */
+  function forceHeadRepaint(){
+    phoneHeadEl.style.display = "none";
+    void phoneHeadEl.offsetHeight;
+    phoneHeadEl.style.display = "";
+  }
 
   /* 常规态/编辑态状态机：常规态下卡片纯展示（不抖动、⤢/勾选圆圈隐藏），只有
      长按任意卡片（见 enableSort() 的 start()）才会进入编辑态。editSnapshot
@@ -846,13 +850,14 @@ function phone(plan){
      （openSheet() 的 onConfirm()）、拖拽换位（enableSort() 的 move()，跨函数
      调用走 phoneEl._markDirty，跟 _enterEditMode 同一种写法） */
   let editSnapshot = null;
-  function markDirty(){ doneEl.style.color = ""; doneEl.style.pointerEvents = ""; }
+  function markDirty(){ doneEl.style.color = ""; doneEl.style.pointerEvents = ""; forceHeadRepaint(); }
   function enterEditMode(){
     if(phoneEl.classList.contains("editing")) return;
     editSnapshot = [...grid.children].map(c=>({i:c.dataset.i, size:c.dataset.size}));
     doneEl.style.color = "#b9bbc1"; doneEl.style.pointerEvents = "none";
     phoneEl.classList.add("editing");
     titleEl.textContent = "Edit Cards";
+    forceHeadRepaint();
   }
   function exitEditMode(commit){
     if(!phoneEl.classList.contains("editing")) return;
@@ -874,6 +879,7 @@ function phone(plan){
     editSnapshot = null;
     phoneEl.classList.remove("editing");
     titleEl.textContent = "Home Page";
+    forceHeadRepaint();
   }
   phoneEl._enterEditMode = enterEditMode;   // enableSort() 闭包里跨函数调用，写法同下面 wrap._sheetCarousel
   phoneEl._markDirty = markDirty;           // enableSort()/openSheet() 闭包里跨函数调用，同上

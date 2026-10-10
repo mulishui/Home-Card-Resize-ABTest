@@ -1538,6 +1538,19 @@ timer = setTimeout(()=>start(e.clientX, e.clientY), alreadyEditing ? DRAG_HOLD_M
 
 **Playwright 实测**：重跑拖拽置灰、Cancel 退出、Done 退出（有改动/无改动）三条路径，`doneEl.style.color`/`pointerEvents` 内联样式和 `opacity`/`pointer-events` 计算值全部符合预期，零报错。这是第三次尝试，前两次都在真机上验证失败，这次把"用类选择器控制置灰状态"这个思路整体放弃，而不是继续在同一个思路上微调；如果真机上还有问题，大概率说明病根不在 Done 的置灰逻辑上，需要换一种方式排查（比如用 Mac 的 Safari 远程调试连 iPhone，直接看真机上 Done 元素此刻真实的 computed style 和 inline style，而不是继续在本地猜）。
 
+## 第三十八轮：真机远程调试给出新线索，确认真正病根是吸顶元素重绘被跳过，用强制 reflow 替代纯 CSS 方案（2026-10-10）
+
+用户按上一轮建议用 Mac Safari 远程调试连接 iPhone，但在实际复现 bug 时补充了两个此前没发现的关键细节：
+
+1. **编辑态无改动（Done 置灰）时点 Cancel**：Done 和 Cancel 最终都会消失，但消失的时机不同步（不是同一帧一起变透明）。
+2. **编辑态有改动（Done 激活）时点 Cancel 或 Done**：Done 卡住不消失，但只要列表发生滚动、吸顶的标题栏位置跟着挪动一下，Done 就会立刻消失。
+
+第二条是决定性线索：Done 的 DOM/CSS 状态其实从退出编辑态那一刻起就已经是正确的（`opacity:0`），只是屏幕上的画面没有被重新绘制；而滚动会让 `position:sticky` 的 `.phone-head` 重新计算吸顶位置，顺带强制了一次重绘，把积压的视觉变化一次性"冲"出来。这跟第三十七轮最初的"吸顶重绘被跳过"诊断方向一致，只是当时只给 `.phone-head` 提升了合成层（`transform:translateZ(0)`），这只是缓解手段，不能保证每次状态切换都会触发实际重绘；第一条线索（Cancel 也会不同步地延迟消失）也印证了这不是 Done 独有的问题，只是 Done 身上因为还叠加了一次内联样式写入，更容易踩中这个重绘时机不确定的坑，表现得更明显更稳定。
+
+**修复**：新增 `forceHeadRepaint()`，在 `enterEditMode()`/`markDirty()`/`exitEditMode()` 这三处编辑态状态变化之后都调用一次，通过 `display:none` → 读取 `offsetHeight` 强制同步 reflow → 恢复 `display` 这个经典手法，在同一个事件循环内把 `.phone-head` 强制重绘一次，不依赖等待外部布局事件（比如滚动）来补齐。`.phone-head{transform:translateZ(0)}` 继续保留作为合成层提升，两者配合而不是互斥。
+
+**Playwright 实测**：重跑长按进入编辑态、无改动点 Done（按钮应保持置灰不可点）、拖拽置灰后点 Cancel 三条路径，`.editing` 类增删、`opacity` 计算值全部符合预期，零报错。强制 reflow 这类手法在 Chromium 上验证不出"修复前后差异"（Chromium 本来就没有这个重绘遗漏 bug），这次改动能否解决真机问题仍需用户在 iPhone 上确认；如果还不行，下一步考虑把 `forceHeadRepaint()` 的触发时机从"状态变化那一刻"改成"状态变化后再等一帧（`requestAnimationFrame`）执行"，避免跟同一事件循环里的其它样式写入（比如 FLIP 动画的 class 操作）互相抢跑。
+
 ## 相关
 
 - Claude 的跨会话记忆里也存了一份对应记录：
