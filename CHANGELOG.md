@@ -1520,6 +1520,16 @@ timer = setTimeout(()=>start(e.clientX, e.clientY), alreadyEditing ? DRAG_HOLD_M
 
 **验证**：这是只在真机 iOS Safari 的 GPU 合成管线上才会触发的渲染 bug，无法在 Playwright headless 环境里直接复现/回归（Chromium 没有这个 bug，headless WebKit 也不保证复现真机合成行为）。用 Chromium 模拟移动端视口跑了长按进入编辑态→点 Cancel/Done 退出的完整流程，确认改动前后 `.editing` 类增删、`opacity`/`pointer-events` 计算值、卡片排布都没有变化（即没有引入回归），零报错。这个修复本身需要用户在真实 iPhone 上验证是否解决。
 
+## 第三十七轮追加：上一条"吸顶重绘"诊断是错的，真正根因是 Done 独有的 `:not()` 选择器（2026-10-10）
+
+用户在真机验证后反馈：上一条修复无效，而且现象比原先描述的更精确——**不管是点 Done 还是点 Cancel 退出，卡住的永远只有 Done，Cancel 每次都能正常消失**。这推翻了"吸顶状态下子元素重绘被跳过"的猜想：如果是 `.phone-head` 整体重绘被跳过，Cancel 和 Done 应该一起卡住（两者的 `opacity` 都挂在同一条 `.phone.editing .navbar .act{opacity:1}` 规则上），不会只卡 Done 一个。
+
+**真正根因**：Cancel 和 Done 在 CSS 规则数量上不对等——Done 比 Cancel 多匹配一条规则：`.phone.editing .navbar .act.done:not(.dirty){color:#b9bbc1;pointer-events:none}`。这是当时整个 `.navbar .act` 体系里唯一一处用了 `:not()` 伪类的规则，而 `:not()` 的匹配结果依赖祖先元素（`.phone` 上的 `.editing`）是否存在。iOS Safari 对"祖先类被移除时，依赖该祖先的 `:not()` 后代选择器匹配结果没有正确失效重算"这类场景有已知的样式失效 bug（这正是为什么只有带 `:not()` 的 Done 会卡住，不带 `:not()` 的 Cancel 完全正常）。
+
+**修复**：把 `:not(.dirty)` 这种"反向排除"写法换成正向的类选择器——新增 `.idle` 类表示"编辑态里还没做任何改动"，`enterEditMode()` 进入编辑态时加上 `.idle`，`markDirty()` 真正发生改动时去掉 `.idle`；CSS 规则改成不含 `:not()` 的 `.phone.editing .navbar .act.done.idle{color:#b9bbc1;pointer-events:none}`。上一轮加的 `.phone-head{transform:translateZ(0)}` 层提升对这个 bug 无效但也无害，继续保留。
+
+**Playwright 实测**：重跑拖拽置灰变化、Cancel 退出、Done 退出（含有改动/无改动两种情形）三条路径，`.editing` 类增删、`idle` 类增删、`opacity`/`pointer-events`/`color` 计算值全部符合预期，零报错。`:not()` 选择器失效属于真机渐染层问题，headless 环境本身无法验证"换掉 `:not()` 是否真的解决了真机卡住"，同样需要用户在 iPhone 上确认。
+
 ## 相关
 
 - Claude 的跨会话记忆里也存了一份对应记录：

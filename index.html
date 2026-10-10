@@ -76,13 +76,15 @@ body.dragging{user-select:none;cursor:grabbing}
 .navbar .act.done{font-weight:600}
 .phone.editing .navbar .act{opacity:1;pointer-events:auto}
 /* Done 默认（刚进编辑态、还没做任何改动）置灰且不可点，跟 Cancel 统一成同一个
-   颜色是等做出改动后才会发生的事——markDirty() 命中改动时才会补上 .dirty 类，
+   颜色是等做出改动后才会发生的事——markDirty() 命中改动时才会去掉 .idle 类，
    见 phone() 里 enterEditMode/markDirty 和 enableSort()/openSheet() 里的调用点。
-   选择器特异度（.phone.editing + .navbar + .act + .done + :not(.dirty)，5 个类）
-   必须压过上面 .phone.editing .navbar .act（4 个类）才能在编辑态下也保持置灰，
-   两条规则都带 .phone.editing 前缀、只是多一层 :not()，不会漏判成"编辑态之外
-   也置灰"——常规态下反正整体 opacity:0，这条规则本来就不生效 */
-.phone.editing .navbar .act.done:not(.dirty){color:#b9bbc1;pointer-events:none}
+   用"有 .idle 就置灰"而不是":not(.dirty)"，是因为 iOS Safari 对 :not() 选择器
+   在祖先类（这里是 .editing）被移除时的样式失效/重绘有已知 bug，会导致 Done
+   退出编辑态后卡在退出前那一帧的颜色/可点状态；换成不含 :not() 的纯类选择器
+   规避这个问题。选择器特异度（.phone.editing + .navbar + .act + .done + .idle，
+   5 个类）必须压过上面 .phone.editing .navbar .act（4 个类）才能在编辑态下
+   也保持置灰 */
+.phone.editing .navbar .act.done.idle{color:#b9bbc1;pointer-events:none}
 .navbar .title{font-size:16px;font-weight:600}
 /* 胶囊形：border-radius 直接给一个远大于自身高度一半的值，不用跟着内容高度手算圆角数值 */
 /* 自适应宽度、水平居中，按钮间隔靠 flex gap 固定 24px，不依赖 space-around 摊开间距，
@@ -844,11 +846,11 @@ function phone(plan){
      （openSheet() 的 onConfirm()）、拖拽换位（enableSort() 的 move()，跨函数
      调用走 phoneEl._markDirty，跟 _enterEditMode 同一种写法） */
   let editSnapshot = null;
-  function markDirty(){ doneEl.classList.add("dirty"); }
+  function markDirty(){ doneEl.classList.remove("idle"); }
   function enterEditMode(){
     if(phoneEl.classList.contains("editing")) return;
     editSnapshot = [...grid.children].map(c=>({i:c.dataset.i, size:c.dataset.size}));
-    doneEl.classList.remove("dirty");
+    doneEl.classList.add("idle");
     phoneEl.classList.add("editing");
     titleEl.textContent = "Edit Cards";
   }
